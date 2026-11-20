@@ -1,8 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { loadAccountOverview, loadAccounts } from '../accounts/data'
+import { loadCategories } from '../categories/data'
 import { useLoadData } from '../lib/useLoadData'
-import { loadLastUsdRate, loadTransaction, loadTransactionOptions, saveTransaction, type TransactionFields } from './data'
+import { loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
 function TransactionEditor({ client, transactionId }: { client: SupabaseClient; transactionId?: string }) {
@@ -12,12 +14,15 @@ function TransactionEditor({ client, transactionId }: { client: SupabaseClient; 
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
   const load = useCallback(async (signal: AbortSignal) => {
-    const [options, transaction, lastUsdRate] = await Promise.all([
-      loadTransactionOptions(client, signal),
+    const [accountData, categories, transaction, lastUsdRate] = await Promise.all([
+      transactionId
+        ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
+        : loadAccountOverview(client, signal),
+      loadCategories(client, signal),
       transactionId ? loadTransaction(client, transactionId, signal) : null,
       loadLastUsdRate(client, signal),
     ])
-    return { ...options, transaction, lastUsdRate }
+    return { ...accountData, categories, transaction, lastUsdRate }
   }, [client, transactionId])
   const { data, hasError, retry } = useLoadData(load)
 

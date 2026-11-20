@@ -5,6 +5,7 @@ import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
 import { deleteTransaction, loadTransactionHistory, type Transaction } from './data'
+import { getTransactionLabels } from './labels'
 
 const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
@@ -22,16 +23,16 @@ function TransactionRow({ transaction, accountName, categoryName, confirming, is
 }) {
   const income = transaction.type === 'income'
   const amountUah = BigInt(transaction.amount_uah_kop)
-  const purchaseName = transaction.purchase_name?.trim()
+  const { title, categoryLabel } = getTransactionLabels(transaction, categoryName)
 
   return (
     <li className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
       <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)]">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{purchaseName || categoryName}</h2>
+          <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
-            {purchaseName && <span>{categoryName}</span>}
-            <span>{income ? 'Дохід' : 'Витрата'}</span>
+            {categoryLabel && <span>{categoryLabel}</span>}
+            {(income || categoryLabel) && <span>{income ? 'Дохід' : 'Витрата'}</span>}
             <span>{accountName}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
           </div>

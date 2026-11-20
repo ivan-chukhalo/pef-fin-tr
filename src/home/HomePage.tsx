@@ -6,6 +6,7 @@ import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
 import { loadTransactionHistory } from '../transactions/data'
+import { getTransactionLabels } from '../transactions/labels'
 
 const cardClass = 'min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900'
 const linkClass = 'inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
@@ -93,13 +94,13 @@ export default function HomePage({ client }: { client: SupabaseClient }) {
               const income = transaction.type === 'income'
               const amount = BigInt(transaction.amount_uah_kop)
               const categoryName = categoriesById.get(transaction.category_id) ?? 'Категорія'
-              const purchaseName = transaction.purchase_name?.trim()
+              const { title, categoryLabel } = getTransactionLabels(transaction, categoryName)
               return (
                 <li key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-start gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{purchaseName || categoryName}</p>
+                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{title}</p>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
-                      {purchaseName && <span>{categoryName}</span>}
+                      {categoryLabel && <span>{categoryLabel}</span>}
                       <span>{accountsById.get(transaction.account_id) ?? 'Рахунок'}</span>
                       <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
                     </div>

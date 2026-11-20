@@ -82,6 +82,10 @@ export default function AnalyticsPage({ client }: { client: SupabaseClient }) {
       <section aria-labelledby="analytics-comparison" className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
         <h2 id="analytics-comparison" className="text-lg font-semibold">Доходи й витрати за місяцями</h2>
         <p className="mt-1 text-sm text-zinc-400 first-letter:uppercase">{formatMonth(comparison[0].month)} – {formatMonth(month)}</p>
+        <dl className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm [overflow-wrap:anywhere]">
+          <dt className="text-zinc-400">Різниця за обраний місяць</dt>
+          <dd className="font-semibold tabular-nums">{formatKopecks((summary?.income ?? 0n) - totalExpense)}</dd>
+        </dl>
         {comparison.some(({ income, expense }) => income > 0n || expense > 0n) ? <MonthlyComparison months={comparison} /> : (
           <p className="mt-4 text-sm text-zinc-400">За цей період доходів і витрат немає.</p>
         )}

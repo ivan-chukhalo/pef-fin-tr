@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import type { Account } from '../accounts/data'
+import AccountPicker from '../accounts/AccountPicker'
+import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
 import { isDateOnOrBefore, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
@@ -8,6 +9,7 @@ import type { Currency, Transaction, TransactionFields } from './data'
 import { convertToUah, parseExchangeRate } from './exchange'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
+const invalidSelectionMessage = 'Оберіть рахунок і категорію.'
 
 function Field({ id, label, children, wide = false }: { id: string; label: string; children: ReactNode; wide?: boolean }) {
   return (
@@ -20,6 +22,7 @@ function Field({ id, label, children, wide = false }: { id: string; label: strin
 
 type TransactionFormProps = {
   accounts: Account[]
+  changesByAccount: ReadonlyMap<string, bigint> | null
   categories: Category[]
   transaction: Transaction | null
   lastUsdRate: string
@@ -28,7 +31,7 @@ type TransactionFormProps = {
   onSave: (fields: TransactionFields) => void
 }
 
-export default function TransactionForm({ accounts, categories, transaction, lastUsdRate, isSaving, saveError, onSave }: TransactionFormProps) {
+export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, isSaving, saveError, onSave }: TransactionFormProps) {
   const activeAccounts = accounts.filter((account) => !account.is_hidden)
   const [accountId, setAccountId] = useState(transaction?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
   const [categoryId, setCategoryId] = useState(transaction?.category_id ?? '')
@@ -62,7 +65,7 @@ export default function TransactionForm({ accounts, categories, transaction, las
       return
     }
     if (!validAccount || !validCategory) {
-      setErrorMessage('Оберіть рахунок і категорію.')
+      setErrorMessage(invalidSelectionMessage)
       return
     }
     if (amount === null || amount <= 0n) {
@@ -134,13 +137,30 @@ export default function TransactionForm({ accounts, categories, transaction, las
             </div>
           </>
         )}
-        <Field id="transaction-account" label="Рахунок">
-          <select id="transaction-account" className={fieldClass} value={accountId} onChange={(event) => setAccountId(event.target.value)} required>
-            <option value="" disabled>Оберіть рахунок</option>
-            {keptAccount && <option value={keptAccount.id} disabled>{keptAccount.name} (приховано)</option>}
-            {activeAccounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </Field>
+        {changesByAccount ? (
+          <AccountPicker
+            id="transaction-account"
+            label="Рахунок"
+            accounts={activeAccounts.map((account) => ({
+              id: account.id,
+              name: account.name,
+              balance: getAccountBalance(account, changesByAccount),
+            }))}
+            value={accountId}
+            onChange={(id) => {
+              setAccountId(id)
+              setErrorMessage((message) => message === invalidSelectionMessage ? '' : message)
+            }}
+          />
+        ) : (
+          <Field id="transaction-account" label="Рахунок">
+            <select id="transaction-account" className={fieldClass} value={accountId} onChange={(event) => setAccountId(event.target.value)} required>
+              <option value="" disabled>Оберіть рахунок</option>
+              {keptAccount && <option value={keptAccount.id} disabled>{keptAccount.name} (приховано)</option>}
+              {activeAccounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </Field>
+        )}
         <Field id="transaction-category" label="Категорія">
           <select id="transaction-category" className={fieldClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
             <option value="" disabled>Оберіть категорію</option>

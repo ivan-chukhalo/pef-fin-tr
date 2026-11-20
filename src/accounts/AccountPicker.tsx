@@ -98,6 +98,7 @@ export default function AccountPicker({ id, label, accounts, value, onChange }: 
           ref={trigger}
           id={id}
           type="button"
+          disabled={!accounts.length}
           role="combobox"
           aria-labelledby={`${id}-label`}
           aria-describedby={`${id}-value`}
