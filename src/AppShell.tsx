@@ -4,6 +4,8 @@ import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'reac
 import AccountsPage from './accounts/AccountsPage'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
+const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
+const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -102,10 +104,12 @@ function SectionPage({
   title,
   action,
   children,
+  showQuickAdd = true,
 }: {
   title: string
   action?: ReactNode
   children?: ReactNode
+  showQuickAdd?: boolean
 }) {
   return (
     <section>
@@ -113,16 +117,20 @@ function SectionPage({
         <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{title}</h1>
         <div className="flex flex-wrap items-center gap-3">
           {action}
-          <Link
-            to={addTransaction.path}
-            className={`hidden h-11 items-center gap-2 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-200 md:inline-flex ${focusClass}`}
-          >
-            <span aria-hidden="true" className="text-xl leading-none">+</span>
-            {addTransaction.label}
-          </Link>
+          {showQuickAdd && (
+            <Link
+              to={addTransaction.path}
+              className={`hidden h-11 items-center gap-2 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-200 md:inline-flex ${focusClass}`}
+            >
+              <span aria-hidden="true" className="text-xl leading-none">+</span>
+              {addTransaction.label}
+            </Link>
+          )}
         </div>
       </header>
-      {children}
+      <Suspense fallback={<p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо розділ…</p>}>
+        {children}
+      </Suspense>
     </section>
   )
 }
@@ -149,11 +157,8 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                   )}
                 >
                   {path === accounts.path && <AccountsPage client={client} />}
-                  {path === categories.path && (
-                    <Suspense fallback={<p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо категорії…</p>}>
-                      <CategoriesPage client={client} />
-                    </Suspense>
-                  )}
+                  {path === categories.path && <CategoriesPage client={client} />}
+                  {path === transactions.path && <TransactionsPage client={client} />}
                   {path === settings.path && (
                     <Link to={categories.path} className={`mt-6 inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 ${focusClass}`}>
                       Керувати категоріями
@@ -163,7 +168,22 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
               }
             />
           ))}
-          <Route path={addTransaction.path} element={<SectionPage title={addTransaction.label} />} />
+          <Route
+            path={addTransaction.path}
+            element={
+              <SectionPage title={addTransaction.label} showQuickAdd={false}>
+                <TransactionEditorPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path="/transactions/:transactionId/edit"
+            element={
+              <SectionPage title="Редагувати транзакцію">
+                <TransactionEditorPage client={client} />
+              </SectionPage>
+            }
+          />
           <Route path={transfer.path} element={<SectionPage title={transfer.label} />} />
           <Route
             path={more.path}

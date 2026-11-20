@@ -35,12 +35,16 @@ export type AccountOverview = {
 
 const accountColumns = 'id,name,type,initial_balance_kop::text,is_hidden,created_at'
 
+export function loadAccounts(client: SupabaseClient, signal?: AbortSignal): Promise<Account[]> {
+  return readRows<Account>(client, 'accounts', accountColumns, signal)
+}
+
 export async function loadAccountOverview(
   client: SupabaseClient,
   signal: AbortSignal,
 ): Promise<AccountOverview> {
   const [accounts, transactions, transfers] = await Promise.all([
-    readRows<Account>(client, 'accounts', accountColumns, signal),
+    loadAccounts(client, signal),
     readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal),
     readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal),
   ])

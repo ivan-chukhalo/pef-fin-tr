@@ -11,6 +11,10 @@ const inputFormatter = new Intl.NumberFormat('uk-UA', {
   maximumFractionDigits: 2,
 })
 
+export function fitsDatabaseKopecks(amount: bigint): boolean {
+  return amount >= databaseMin && amount <= databaseMax
+}
+
 export function parseHryvnias(value: string): bigint | null {
   const parts = /^([+-]?)(\d+)(?:[.,](\d{1,2}))?$/.exec(value.trim())
   if (!parts) return null
@@ -19,7 +23,7 @@ export function parseHryvnias(value: string): bigint | null {
   const amount = BigInt(hryvnias) * 100n + BigInt(fraction.padEnd(2, '0'))
   const kopecks = sign === '-' ? -amount : amount
 
-  return kopecks >= databaseMin && kopecks <= databaseMax ? kopecks : null
+  return fitsDatabaseKopecks(kopecks) ? kopecks : null
 }
 
 export function formatKopecks(amount: bigint, formatter = currencyFormatter): string {
