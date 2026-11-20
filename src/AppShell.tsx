@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { lazy, Suspense, type ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import AccountsPage from './accounts/AccountsPage'
+import HomePage from './home/HomePage'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
@@ -157,6 +158,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                     </Link>
                   )}
                 >
+                  {path === home.path && <HomePage client={client} />}
                   {path === accounts.path && <AccountsPage client={client} />}
                   {path === categories.path && <CategoriesPage client={client} />}
                   {path === transactions.path && <TransactionsPage client={client} />}

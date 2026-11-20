@@ -43,15 +43,11 @@ export function loadAccounts(client: SupabaseClient, signal?: AbortSignal): Prom
   return readRows<Account>(client, 'accounts', accountColumns, signal)
 }
 
-export async function loadAccountOverview(
-  client: SupabaseClient,
-  signal: AbortSignal,
-): Promise<AccountOverview> {
-  const [accounts, transactions, transfers] = await Promise.all([
-    loadAccounts(client, signal),
-    readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal),
-    readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal),
-  ])
+export function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal): Promise<TransferAmount[]> {
+  return readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal)
+}
+
+export function getAccountBalanceChanges(transactions: readonly TransactionAmount[], transfers: readonly TransferAmount[]): Map<string, bigint> {
   const changesByAccount = new Map<string, bigint>()
 
   function addChange(accountId: string, amount: bigint) {
@@ -69,7 +65,20 @@ export async function loadAccountOverview(
     addChange(transfer.to_account_id, amount)
   }
 
-  return { accounts, changesByAccount }
+  return changesByAccount
+}
+
+export async function loadAccountOverview(
+  client: SupabaseClient,
+  signal: AbortSignal,
+): Promise<AccountOverview> {
+  const [accounts, transactions, transfers] = await Promise.all([
+    loadAccounts(client, signal),
+    readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal),
+    loadTransferAmounts(client, signal),
+  ])
+
+  return { accounts, changesByAccount: getAccountBalanceChanges(transactions, transfers) }
 }
 
 export async function saveAccount(
