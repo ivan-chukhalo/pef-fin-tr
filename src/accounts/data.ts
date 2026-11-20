@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { readRows } from '../lib/readRows'
 
 export type AccountType = 'card' | 'cash'
 
@@ -33,34 +34,6 @@ export type AccountOverview = {
 }
 
 const accountColumns = 'id,name,type,initial_balance_kop::text,is_hidden,created_at'
-
-async function readRows<Row extends { id: string }>(
-  client: SupabaseClient,
-  table: 'accounts' | 'transactions' | 'transfers',
-  columns: string,
-  signal: AbortSignal,
-): Promise<Row[]> {
-  const rows: Row[] = []
-  let lastId: string | undefined
-
-  for (;;) {
-    const query = client.from(table)
-      .select(columns, lastId ? undefined : { count: 'exact' })
-      .order('id')
-      .limit(500)
-      .abortSignal(signal)
-    if (lastId) query.gt('id', lastId)
-
-    const { data, error, count } = await query.overrideTypes<Row[], { merge: false }>()
-    if (error) throw error
-    if (!data?.length) return rows
-
-    rows.push(...data)
-    if (count === rows.length) return rows
-
-    lastId = data[data.length - 1].id
-  }
-}
 
 export async function loadAccountOverview(
   client: SupabaseClient,

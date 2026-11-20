@@ -1,16 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import AccountsPage from './accounts/AccountsPage'
+
+const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
 const analytics = { path: '/analytics', label: 'Аналітика' }
 const accounts = { path: '/more/accounts', label: 'Рахунки' }
+const categories = { path: '/more/categories', label: 'Категорії' }
+const settings = { path: '/more/settings', label: 'Налаштування' }
 const additionalSections = [
   accounts,
-  { path: '/more/categories', label: 'Категорії' },
-  { path: '/more/settings', label: 'Налаштування' },
+  categories,
+  settings,
 ]
 const sections = [home, transactions, analytics, ...additionalSections]
 const more = { path: '/more', label: 'Ще' }
@@ -145,6 +149,16 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                   )}
                 >
                   {path === accounts.path && <AccountsPage client={client} />}
+                  {path === categories.path && (
+                    <Suspense fallback={<p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо категорії…</p>}>
+                      <CategoriesPage client={client} />
+                    </Suspense>
+                  )}
+                  {path === settings.path && (
+                    <Link to={categories.path} className={`mt-6 inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 ${focusClass}`}>
+                      Керувати категоріями
+                    </Link>
+                  )}
                 </SectionPage>
               }
             />
