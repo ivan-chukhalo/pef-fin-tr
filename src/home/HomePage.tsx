@@ -92,11 +92,14 @@ export default function HomePage({ client }: { client: SupabaseClient }) {
             {recentTransactions.map((transaction) => {
               const income = transaction.type === 'income'
               const amount = BigInt(transaction.amount_uah_kop)
+              const categoryName = categoriesById.get(transaction.category_id) ?? 'Категорія'
+              const purchaseName = transaction.purchase_name?.trim()
               return (
                 <li key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-start gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{categoriesById.get(transaction.category_id) ?? 'Категорія'}</p>
+                    <p className="text-sm font-medium [overflow-wrap:anywhere]">{purchaseName || categoryName}</p>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
+                      {purchaseName && <span>{categoryName}</span>}
                       <span>{accountsById.get(transaction.account_id) ?? 'Рахунок'}</span>
                       <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
                     </div>

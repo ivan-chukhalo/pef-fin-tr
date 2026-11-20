@@ -46,6 +46,7 @@
 | amount_original_kop | bigint | сума в оригінальній валюті, копійки (або центи) |
 | rate | numeric | курс на дату операції (для UAH дорівнює 1) |
 | amount_uah_kop | bigint | сума в гривнях, копійки, фіксується при збереженні |
+| purchase_name | text | необов’язкова назва покупки, лише для витрат |
 | comment | text | необов'язково |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |

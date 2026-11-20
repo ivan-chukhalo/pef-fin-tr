@@ -36,6 +36,7 @@ export default function TransactionForm({ accounts, categories, transaction, las
   const [currency, setCurrency] = useState<Currency>(transaction?.currency ?? 'UAH')
   const [amountInput, setAmountInput] = useState(transaction ? formatBalanceInput(BigInt(transaction.amount_original_kop)) : '')
   const [rateInput, setRateInput] = useState((transaction?.currency === 'USD' ? transaction.rate : lastUsdRate).replace('.', ','))
+  const [purchaseName, setPurchaseName] = useState(transaction?.purchase_name ?? '')
   const [errorMessage, setErrorMessage] = useState('')
 
   const availableCategories = getAvailableCategories(categories, type)
@@ -86,6 +87,7 @@ export default function TransactionForm({ accounts, categories, transaction, las
       currency,
       amount_original_kop: amount.toString(),
       rate,
+      purchase_name: type === 'expense' ? purchaseName.trim() || null : null,
       comment: String(fields.get('comment') ?? '').trim() || null,
     })
   }
@@ -93,6 +95,11 @@ export default function TransactionForm({ accounts, categories, transaction, las
   return (
     <form aria-label={transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
       <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2">
+        {type === 'expense' && (
+          <Field id="transaction-purchase-name" label="Назва покупки (необов’язково)" wide>
+            <input id="transaction-purchase-name" className={fieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
+          </Field>
+        )}
         <Field id="transaction-type" label="Тип операції">
           <select id="transaction-type" className={fieldClass} value={type} onChange={(event) => {
             setType(event.target.value === 'income' ? 'income' : 'expense')

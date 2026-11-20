@@ -13,6 +13,7 @@ export type TransactionFields = {
   currency: Currency
   amount_original_kop: string
   rate: string
+  purchase_name: string | null
   comment: string | null
 }
 
@@ -22,7 +23,7 @@ export type Transaction = TransactionFields & {
   created_at: string
 }
 
-const columns = 'id,account_id,category_id,type,date,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,comment,created_at'
+const columns = 'id,account_id,category_id,type,date,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
 
 export function loadTransactions(client: SupabaseClient, signal: AbortSignal): Promise<Transaction[]> {
   return readRows<Transaction>(client, 'transactions', columns, signal)

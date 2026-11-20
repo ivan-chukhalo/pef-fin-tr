@@ -22,13 +22,15 @@ function TransactionRow({ transaction, accountName, categoryName, confirming, is
 }) {
   const income = transaction.type === 'income'
   const amountUah = BigInt(transaction.amount_uah_kop)
+  const purchaseName = transaction.purchase_name?.trim()
 
   return (
     <li className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
       <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)]">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{categoryName}</h2>
+          <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{purchaseName || categoryName}</h2>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
+            {purchaseName && <span>{categoryName}</span>}
             <span>{income ? 'Дохід' : 'Витрата'}</span>
             <span>{accountName}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
