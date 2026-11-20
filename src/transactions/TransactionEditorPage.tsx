@@ -1,9 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useLoadData } from '../lib/useLoadData'
 import { loadLastUsdRate, loadTransaction, loadTransactionOptions, saveTransaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
-import { useTransactionData } from './useTransactionData'
 
 function TransactionEditor({ client, transactionId }: { client: SupabaseClient; transactionId?: string }) {
   const navigate = useNavigate()
@@ -19,7 +19,7 @@ function TransactionEditor({ client, transactionId }: { client: SupabaseClient; 
     ])
     return { ...options, transaction, lastUsdRate }
   }, [client, transactionId])
-  const { data, hasError, retry } = useTransactionData(load)
+  const { data, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransactionFields) {
     if (saving.current) return

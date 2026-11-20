@@ -3,8 +3,8 @@ import { useCallback, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
+import { useLoadData } from '../lib/useLoadData'
 import { deleteTransaction, loadTransactionHistory, type Transaction } from './data'
-import { useTransactionData } from './useTransactionData'
 
 const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
@@ -74,7 +74,7 @@ export default function TransactionsPage({ client }: { client: SupabaseClient })
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
   const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal), [client])
-  const { data, setData, hasError, retry } = useTransactionData(load)
+  const { data, setData, hasError, retry } = useLoadData(load)
 
   const currentMonth = todayInKyiv().slice(0, 7)
   const requestedMonth = params.get('month')

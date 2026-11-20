@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export function useTransactionData<Data>(load: (signal: AbortSignal) => Promise<Data>) {
+export function useLoadData<Data>(load: (signal: AbortSignal) => Promise<Data>) {
   const [data, setData] = useState<Data | null>(null)
   const [hasError, setHasError] = useState(false)
   const [attempt, setAttempt] = useState(0)

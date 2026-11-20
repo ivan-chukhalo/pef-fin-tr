@@ -6,6 +6,7 @@ import AccountsPage from './accounts/AccountsPage'
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
 const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
+const TransferPage = lazy(() => import('./transfers/TransferPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -184,7 +185,14 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
               </SectionPage>
             }
           />
-          <Route path={transfer.path} element={<SectionPage title={transfer.label} />} />
+          <Route
+            path={transfer.path}
+            element={
+              <SectionPage title={transfer.label}>
+                <TransferPage client={client} />
+              </SectionPage>
+            }
+          />
           <Route
             path={more.path}
             element={
