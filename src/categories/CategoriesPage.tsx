@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
 import CategoryForm from './CategoryForm'
-import { addDefaultCategories, getAvailableCategories, loadCategories, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
+import { getAvailableCategories, loadCategories, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const categoryTypes = [
@@ -132,14 +132,6 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     }, 'Не вдалося змінити видимість категорії. Спробуйте ще раз.')
   }
 
-  function handleAddDefaults() {
-    void applyCategoryChange(async () => {
-      const result = await addDefaultCategories(client)
-      setCategories(result.categories)
-      return result.added ? 'Додано стандартні категорії.' : 'Стандартні категорії вже є.'
-    }, 'Не вдалося додати стандартні категорії. Спробуйте ще раз.')
-  }
-
   if (!categories) {
     return loadError ? (
       <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -187,14 +179,9 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
           ))}
         </div>
         {!editor && (
-          <>
-            <button type="button" disabled={isSaving} className={buttonClass} onClick={() => openEditor()}>
-              Додати категорію
-            </button>
-            <button type="button" disabled={isSaving} className={buttonClass} onClick={handleAddDefaults}>
-              Додати стандартний набір
-            </button>
-          </>
+          <button type="button" disabled={isSaving} className={buttonClass} onClick={() => openEditor()}>
+            Додати категорію
+          </button>
         )}
       </div>
 

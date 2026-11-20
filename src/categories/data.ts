@@ -28,10 +28,6 @@ const defaults = [
   { key: 'other-expenses', name: 'Інші витрати', type: 'expense' },
 ] as const
 
-export function loadCategories(client: SupabaseClient, signal?: AbortSignal): Promise<Category[]> {
-  return readRows<Category>(client, 'categories', columns, signal)
-}
-
 export function getAvailableCategories(categories: readonly Category[], type: CategoryType): Category[] {
   return categories
     .filter((category) => category.type === type && !category.is_hidden)
@@ -76,11 +72,13 @@ async function defaultCategoryId(userId: string, key: string): Promise<string> {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export async function addDefaultCategories(client: SupabaseClient): Promise<{ categories: Category[]; added: number }> {
-  const { data: { user }, error: userError } = await client.auth.getUser()
+export async function loadCategories(client: SupabaseClient, signal?: AbortSignal): Promise<Category[]> {
+  const [{ data: { user }, error: userError }, categories] = await Promise.all([
+    client.auth.getUser(),
+    readRows<Category>(client, 'categories', columns, signal),
+  ])
   if (userError || !user) throw userError ?? new Error('Session unavailable')
 
-  const categories = await loadCategories(client)
   const existingIds = new Set(categories.map(({ id }) => id))
   const existingNames = new Set(categories.map(({ type, name }) => `${type}:${name.trim().toLocaleLowerCase('uk-UA')}`))
   const rows = await Promise.all(defaults.map(async ({ key, name, type }) => ({
@@ -92,12 +90,15 @@ export async function addDefaultCategories(client: SupabaseClient): Promise<{ ca
     !existingIds.has(id) && !existingNames.has(`${type}:${name.toLocaleLowerCase('uk-UA')}`),
   )
 
-  if (!missing.length) return { categories, added: 0 }
+  if (!missing.length) return categories
 
-  const { data, error } = await client.from('categories')
+  signal?.throwIfAborted()
+  const query = client.from('categories')
     .upsert(missing, { onConflict: 'id', ignoreDuplicates: true })
-    .select('id')
+  if (signal) query.abortSignal(signal)
+
+  const { error } = await query
   if (error) throw error
 
-  return { categories: await loadCategories(client), added: data.length }
+  return readRows<Category>(client, 'categories', columns, signal)
 }
