@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AppShell from './AppShell'
 import LoginForm from './LoginForm'
 import { supabase } from './lib/supabase'
 
@@ -15,6 +16,8 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  if (hasSession) return <AppShell />
+
   return (
     <main className="grid min-h-dvh place-items-center bg-zinc-950 px-4 py-8 text-zinc-100">
       {!supabase && (
@@ -24,9 +27,6 @@ function App() {
         <p role="status">Перевіряємо сесію…</p>
       )}
       {supabase && hasSession === false && <LoginForm client={supabase} />}
-      {hasSession && (
-        <h1 className="text-2xl font-semibold tracking-tight">Персональні фінанси</h1>
-      )}
     </main>
   )
 }
