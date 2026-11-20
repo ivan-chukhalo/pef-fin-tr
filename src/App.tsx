@@ -16,7 +16,7 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  if (hasSession) return <AppShell />
+  if (supabase && hasSession) return <AppShell client={supabase} />
 
   return (
     <main className="grid min-h-dvh place-items-center bg-zinc-950 px-4 py-8 text-zinc-100">

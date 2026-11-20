@@ -1,11 +1,14 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import AccountsPage from './accounts/AccountsPage'
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
 const analytics = { path: '/analytics', label: 'Аналітика' }
+const accounts = { path: '/more/accounts', label: 'Рахунки' }
 const additionalSections = [
-  { path: '/more/accounts', label: 'Рахунки' },
+  accounts,
   { path: '/more/categories', label: 'Категорії' },
   { path: '/more/settings', label: 'Налаштування' },
 ]
@@ -120,7 +123,7 @@ function SectionPage({
   )
 }
 
-export default function AppShell() {
+export default function AppShell({ client }: { client: SupabaseClient }) {
   return (
     <HashRouter>
       <Routes>
@@ -140,7 +143,9 @@ export default function AppShell() {
                       {transfer.label}
                     </Link>
                   )}
-                />
+                >
+                  {path === accounts.path && <AccountsPage client={client} />}
+                </SectionPage>
               }
             />
           ))}
