@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
 import { formatKopecks } from '../lib/money'
 import AccountForm from './AccountForm'
-import { loadAccountOverview, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
+import { getAccountBalance, loadAccountOverview, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
@@ -18,7 +18,7 @@ function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHid
   return (
     <ul className="grid gap-3 xl:grid-cols-2">
       {accounts.map((account) => {
-        const balance = BigInt(account.initial_balance_kop) + (changesByAccount.get(account.id) ?? 0n)
+        const balance = getAccountBalance(account, changesByAccount)
         const hideLabel = account.is_hidden ? 'Відновити' : 'Приховати'
 
         return (

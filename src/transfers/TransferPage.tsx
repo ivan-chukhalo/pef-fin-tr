@@ -1,18 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { loadAccounts, type Account } from '../accounts/data'
+import { getAccountBalance, loadAccountOverview } from '../accounts/data'
 import { formatDate, isDateOnOrBefore, todayInKyiv } from '../lib/dates'
 import { formatKopecks, parseHryvnias } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
+import AccountPicker, { type AccountOption } from './AccountPicker'
 import { saveTransfer, type TransferFields, type TransferReceipt } from './data'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const secondaryActionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const primaryActionClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
+const invalidAccountsMessage = 'Оберіть два різні рахунки.'
 
 function TransferForm({ accounts, isSaving, saveError, onSave }: {
-  accounts: Account[]
+  accounts: AccountOption[]
   isSaving: boolean
   saveError: boolean
   onSave: (fields: TransferFields) => void
@@ -21,6 +23,10 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
   const [toAccountId, setToAccountId] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const today = todayInKyiv()
+
+  function clearAccountSelectionError() {
+    setErrorMessage((message) => message === invalidAccountsMessage ? '' : message)
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -37,7 +43,7 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
     if (fromAccountId === toAccountId ||
       !accounts.some(({ id }) => id === fromAccountId) ||
       !accounts.some(({ id }) => id === toAccountId)) {
-      setErrorMessage('Оберіть два різні рахунки.')
+      setErrorMessage(invalidAccountsMessage)
       return
     }
     if (amount === null || amount <= 0n) {
@@ -66,24 +72,15 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
           <label htmlFor="transfer-date">Дата</label>
           <input id="transfer-date" name="date" type="date" defaultValue={today} max={today} className={fieldClass} required />
         </div>
-        <div className="grid min-w-0 gap-2 text-sm font-medium">
-          <label htmlFor="transfer-from">З рахунку</label>
-          <select id="transfer-from" className={fieldClass} required value={fromAccountId} onChange={(event) => {
-            const nextAccountId = event.target.value
-            setFromAccountId(nextAccountId)
-            if (nextAccountId === toAccountId) setToAccountId('')
-          }}>
-            <option value="" disabled>Оберіть рахунок</option>
-            {accounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </div>
-        <div className="grid min-w-0 gap-2 text-sm font-medium">
-          <label htmlFor="transfer-to">На рахунок</label>
-          <select id="transfer-to" className={fieldClass} required value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>
-            <option value="" disabled>Оберіть рахунок</option>
-            {accounts.filter(({ id }) => id !== fromAccountId).map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-          </select>
-        </div>
+        <AccountPicker id="transfer-from" label="З рахунку" accounts={accounts} value={fromAccountId} onChange={(nextAccountId) => {
+          setFromAccountId(nextAccountId)
+          if (nextAccountId === toAccountId) setToAccountId('')
+          clearAccountSelectionError()
+        }} />
+        <AccountPicker id="transfer-to" label="На рахунок" accounts={accounts.filter(({ id }) => id !== fromAccountId)} value={toAccountId} onChange={(nextAccountId) => {
+          setToAccountId(nextAccountId)
+          clearAccountSelectionError()
+        }} />
         <div className="grid min-w-0 gap-2 text-sm font-medium sm:col-span-2">
           <label htmlFor="transfer-comment">Коментар (необов’язково)</label>
           <textarea id="transfer-comment" name="comment" rows={2} className={fieldClass} />
@@ -110,8 +107,8 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadAccounts(client, signal), [client])
-  const { data: accounts, hasError, retry } = useLoadData(load)
+  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal), [client])
+  const { data: overview, setData: setOverview, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransferFields) {
     if (saving.current) return
@@ -129,7 +126,7 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
     }
   }
 
-  if (!accounts) {
+  if (!overview) {
     return hasError ? (
       <div className="mt-6 space-y-3">
         <p role="alert" className="text-sm text-rose-300">Не вдалося завантажити рахунки для переказу.</p>
@@ -137,6 +134,8 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
       </div>
     ) : <p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо рахунки…</p>
   }
+
+  const { accounts, changesByAccount } = overview
 
   if (receipt) {
     const { transfer, savedEarlierWithDifferentDetails } = receipt
@@ -177,6 +176,8 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
           <button type="button" className={secondaryActionClass} onClick={() => {
             setDraftId(crypto.randomUUID())
             setReceipt(null)
+            setOverview(null)
+            retry()
           }}>
             Новий переказ
           </button>
@@ -195,5 +196,11 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
     )
   }
 
-  return <TransferForm key={draftId} accounts={activeAccounts} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  const accountOptions = activeAccounts.map((account) => ({
+    id: account.id,
+    name: account.name,
+    balance: getAccountBalance(account, changesByAccount),
+  }))
+
+  return <TransferForm key={draftId} accounts={accountOptions} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }

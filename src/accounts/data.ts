@@ -33,6 +33,10 @@ export type AccountOverview = {
   changesByAccount: Map<string, bigint>
 }
 
+export function getAccountBalance(account: Account, changesByAccount: ReadonlyMap<string, bigint>): bigint {
+  return BigInt(account.initial_balance_kop) + (changesByAccount.get(account.id) ?? 0n)
+}
+
 const accountColumns = 'id,name,type,initial_balance_kop::text,is_hidden,created_at'
 
 export function loadAccounts(client: SupabaseClient, signal?: AbortSignal): Promise<Account[]> {
