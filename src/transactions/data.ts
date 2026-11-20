@@ -24,6 +24,10 @@ export type Transaction = TransactionFields & {
 
 const columns = 'id,account_id,category_id,type,date,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,comment,created_at'
 
+export function loadTransactions(client: SupabaseClient, signal: AbortSignal): Promise<Transaction[]> {
+  return readRows<Transaction>(client, 'transactions', columns, signal)
+}
+
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal) {
   const [accounts, categories] = await Promise.all([
     loadAccounts(client, signal),
@@ -35,7 +39,7 @@ export async function loadTransactionOptions(client: SupabaseClient, signal: Abo
 export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal) {
   const [options, transactions] = await Promise.all([
     loadTransactionOptions(client, signal),
-    readRows<Transaction>(client, 'transactions', columns, signal),
+    loadTransactions(client, signal),
   ])
 
   transactions.sort((first, second) =>
