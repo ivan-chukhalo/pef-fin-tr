@@ -68,7 +68,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
 
   return (
     <form aria-label="Переказ між рахунками" onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
-      <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2">
+      <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
         <div className="grid min-w-0 gap-2 text-sm font-medium">
           <label htmlFor="transfer-amount">Сума, грн</label>
           <input id="transfer-amount" name="amount" inputMode="decimal" className={fieldClass} autoFocus required />

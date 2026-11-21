@@ -101,7 +101,7 @@ export default function TransactionForm({ accounts, changesByAccount, categories
 
   return (
     <form aria-label={transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
-      <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2">
+      <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
         {type === 'expense' && (
           <Field id="transaction-purchase-name" label="Назва покупки (необов’язково)" wide>
             <input id="transaction-purchase-name" className={fieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
