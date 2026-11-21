@@ -10,14 +10,17 @@ const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
 const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
 const TransferPage = lazy(() => import('./transfers/TransferPage'))
 const PlannedOperationsPage = lazy(() => import('./transactions/PlannedOperationsPage'))
+const ForecastPage = lazy(() => import('./forecast/ForecastPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
 const analytics = { path: '/analytics', label: 'Аналітика' }
+const forecast = { path: '/more/forecast', label: 'Прогноз' }
 const accounts = { path: '/more/accounts', label: 'Рахунки' }
 const categories = { path: '/more/categories', label: 'Категорії' }
 const settings = { path: '/more/settings', label: 'Налаштування' }
 const additionalSections = [
+  forecast,
   accounts,
   categories,
   settings,
@@ -160,6 +163,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                 >
                   {path === home.path && <HomePage client={client} />}
                   {path === analytics.path && <AnalyticsPage client={client} />}
+                  {path === forecast.path && <ForecastPage client={client} />}
                   {path === accounts.path && <AccountsPage client={client} />}
                   {path === categories.path && <CategoriesPage client={client} />}
                   {path === transactions.path && <TransactionsPage client={client} />}

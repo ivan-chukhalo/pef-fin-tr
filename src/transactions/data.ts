@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
-import type { OperationStatus } from '../lib/operations'
+import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
 
 export type Currency = 'UAH' | 'USD'
@@ -27,8 +27,8 @@ export type Transaction = TransactionFields & {
 
 const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
 
-export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatus = 'confirmed'): Promise<Transaction[]> {
-  return readRows<Transaction>(client, 'transactions', columns, signal, ['status', status])
+export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed'): Promise<Transaction[]> {
+  return readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal) {
