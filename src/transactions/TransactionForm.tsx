@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import AccountPicker from '../accounts/AccountPicker'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
-import { todayInKyiv } from '../lib/dates'
+import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, type OperationStatus } from '../lib/operations'
-import type { Currency, Transaction, TransactionFields } from './data'
+import { frequencyLabels, recurringPath, type RecurringSchedule, type RecurringTemplate, type RecurringTemplateFields } from '../recurring/data'
+import type { Currency, TransactionFields } from './data'
 import { convertToUah, parseExchangeRate } from './exchange'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
@@ -26,39 +27,65 @@ type TransactionFormProps = {
   accounts: Account[]
   changesByAccount: ReadonlyMap<string, bigint> | null
   categories: Category[]
-  transaction: Transaction | null
   lastUsdRate: string
-  initialStatus: OperationStatus
-  confirming: boolean
   isSaving: boolean
   saveError: boolean
+} & ({
+  recurringTemplate?: never
+  transaction: TransactionFields | null
+  initialStatus: OperationStatus
+  confirming: boolean
   onSave: (fields: TransactionFields) => void
+} | {
+  recurringTemplate: RecurringTemplate | null
+  onSave: (fields: RecurringTemplateFields) => void
+})
+
+function scheduleFitsCalendar(date: string, frequency: RecurringSchedule['frequency'], occurrences: number) {
+  const last = new Date(`${date}T00:00:00Z`)
+  if (frequency === 'weekly') last.setUTCDate(last.getUTCDate() + (occurrences - 1) * 7)
+  else {
+    last.setUTCDate(1)
+    last.setUTCMonth(last.getUTCMonth() + occurrences - 1)
+  }
+  return last.getUTCFullYear() <= 9999
 }
 
-export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, initialStatus, confirming, isSaving, saveError, onSave }: TransactionFormProps) {
+export default function TransactionForm(props: TransactionFormProps) {
+  const { accounts, changesByAccount, categories, lastUsdRate, isSaving, saveError } = props
+  const recurring = props.recurringTemplate !== undefined
+  const transaction = recurring ? null : props.transaction
+  const template = props.recurringTemplate
+  const details = template ?? transaction
+  const confirming = !recurring && props.confirming
   const activeAccounts = accounts.filter((account) => !account.is_hidden)
-  const [accountId, setAccountId] = useState(transaction?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
-  const [categoryId, setCategoryId] = useState(transaction?.category_id ?? '')
-  const [type, setType] = useState<CategoryType>(transaction?.type ?? 'expense')
-  const [status, setStatus] = useState(initialStatus)
-  const [currency, setCurrency] = useState<Currency>(transaction?.currency ?? 'UAH')
-  const [amountInput, setAmountInput] = useState(transaction ? formatBalanceInput(BigInt(transaction.amount_original_kop)) : '')
-  const [rateInput, setRateInput] = useState((transaction?.currency === 'USD' ? transaction.rate : lastUsdRate).replace('.', ','))
-  const [purchaseName, setPurchaseName] = useState(transaction?.purchase_name ?? '')
+  const [accountId, setAccountId] = useState(details?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
+  const [categoryId, setCategoryId] = useState(details?.category_id ?? '')
+  const [type, setType] = useState<CategoryType>(details?.type ?? 'expense')
+  const [status, setStatus] = useState(recurring ? 'planned' : props.initialStatus)
+  const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
+  const [amountInput, setAmountInput] = useState(details ? formatBalanceInput(BigInt(details.amount_original_kop)) : '')
+  const [rateInput, setRateInput] = useState((details?.currency === 'USD' ? details.rate : lastUsdRate).replace('.', ','))
+  const [purchaseName, setPurchaseName] = useState(details?.purchase_name ?? '')
   const [errorMessage, setErrorMessage] = useState('')
 
   const availableCategories = getAvailableCategories(categories, type)
-  const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === transaction?.account_id)
+  const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === details?.account_id)
   const keptCategory = categories.find((category) =>
-    category.is_hidden && category.type === type && category.id === categoryId && category.id === transaction?.category_id,
+    category.is_hidden && category.type === type && category.id === categoryId && category.id === details?.category_id,
   )
   const validAccount = Boolean(keptAccount) || activeAccounts.some(({ id }) => id === accountId)
   const validCategory = Boolean(keptCategory) || availableCategories.some(({ id }) => id === categoryId)
   const amount = parseHryvnias(amountInput)
   const rate = currency === 'UAH' ? '1' : parseExchangeRate(rateInput)
   const converted = amount !== null && amount > 0n && rate ? convertToUah(amount, rate) : null
-  const formLabel = confirming ? 'Підтвердити транзакцію' : transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'
-  const submitLabel = confirming ? 'Підтвердити' : !transaction && status === 'planned' ? 'Запланувати' : 'Зберегти'
+  const formLabel = recurring
+    ? template ? 'Редагувати шаблон' : 'Додати шаблон'
+    : confirming ? 'Підтвердити транзакцію' : transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'
+  const submitLabel = recurring ? 'Зберегти шаблон' : confirming ? 'Підтвердити' : !transaction && status === 'planned' ? 'Запланувати' : 'Зберегти'
+  const cancelPath = recurring ? recurringPath : confirming || status === 'planned' ? '/transactions/planned' : '/transactions'
+  const saveErrorMessage = recurring ? 'Не вдалося зберегти шаблон.'
+    : confirming ? 'Не вдалося підтвердити транзакцію.' : 'Не вдалося зберегти транзакцію.'
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -66,7 +93,9 @@ export default function TransactionForm({ accounts, changesByAccount, categories
 
     const fields = new FormData(event.currentTarget)
     const date = String(fields.get('date') ?? '')
-    const dateError = getOperationDateError(date, status, transaction?.date)
+    const dateError = recurring
+      ? isDateOnOrBefore(date) ? '' : 'Вкажіть коректну дату першої операції.'
+      : getOperationDateError(date, status, transaction?.date)
     if (dateError) {
       setErrorMessage(dateError)
       return
@@ -88,19 +117,34 @@ export default function TransactionForm({ accounts, changesByAccount, categories
       return
     }
 
-    setErrorMessage('')
-    onSave({
+    const commonFields = {
       account_id: accountId,
       category_id: categoryId,
       type,
-      date,
-      status,
       currency,
       amount_original_kop: amount.toString(),
       rate,
       purchase_name: type === 'expense' ? purchaseName.trim() || null : null,
       comment: String(fields.get('comment') ?? '').trim() || null,
-    })
+    }
+
+    if (recurring) {
+      const frequency = fields.get('frequency')
+      const occurrences = Number(fields.get('occurrences'))
+      if ((frequency !== 'weekly' && frequency !== 'monthly') || !Number.isInteger(occurrences) || occurrences < 1 || occurrences > 120) {
+        setErrorMessage('Оберіть частоту та вкажіть від 1 до 120 повторень.')
+        return
+      }
+      if (!scheduleFitsCalendar(date, frequency, occurrences)) {
+        setErrorMessage('Остання операція має припадати на дату до кінця 9999 року.')
+        return
+      }
+      setErrorMessage('')
+      props.onSave({ ...commonFields, start_date: date, frequency, occurrences })
+    } else {
+      setErrorMessage('')
+      props.onSave({ ...commonFields, date, status })
+    }
   }
 
   return (
@@ -120,14 +164,30 @@ export default function TransactionForm({ accounts, changesByAccount, categories
             <option value="income">Дохід</option>
           </select>
         </Field>
-        <OperationDateField
-          id="transaction-date"
-          fieldClass={fieldClass}
-          existingDate={confirming ? todayInKyiv() : transaction?.date}
-          status={status}
-          onStatusChange={setStatus}
-          label={confirming ? 'Фактична дата' : 'Дата'}
-        />
+        {recurring ? (
+          <>
+            <Field id="transaction-date" label="Дата першої операції">
+              <input id="transaction-date" name="date" type="date" className={fieldClass} defaultValue={template?.start_date ?? nextCalendarDate(todayInKyiv())} max="9999-12-31" required />
+            </Field>
+            <Field id="recurring-frequency" label="Частота">
+              <select id="recurring-frequency" name="frequency" className={fieldClass} defaultValue={template?.frequency ?? 'monthly'}>
+                {Object.entries(frequencyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
+            <Field id="recurring-occurrences" label="Кількість операцій">
+              <input id="recurring-occurrences" name="occurrences" type="number" className={fieldClass} defaultValue={template?.occurrences ?? 6} min={1} max={120} step={1} required />
+            </Field>
+          </>
+        ) : (
+          <OperationDateField
+            id="transaction-date"
+            fieldClass={fieldClass}
+            existingDate={confirming ? todayInKyiv() : transaction?.date}
+            status={status}
+            onStatusChange={setStatus}
+            label={confirming ? 'Фактична дата' : 'Дата'}
+          />
+        )}
         <Field id="transaction-amount" label="Сума">
           <input id="transaction-amount" className={fieldClass} inputMode="decimal" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} autoFocus required />
         </Field>
@@ -182,13 +242,13 @@ export default function TransactionForm({ accounts, changesByAccount, categories
           </select>
         </Field>
         <Field id="transaction-comment" label="Коментар (необов’язково)" wide>
-          <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={transaction?.comment ?? ''} readOnly={confirming} />
+          <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={details?.comment ?? ''} readOnly={confirming} />
         </Field>
       </fieldset>
 
       {!activeAccounts.length && !keptAccount && (
         <p className="mt-4 text-sm text-zinc-300">
-          <Link to="/more/accounts" className="text-emerald-200 underline underline-offset-2">Додайте або відновіть рахунок</Link>, щоб зберегти транзакцію.
+          <Link to="/more/accounts" className="text-emerald-200 underline underline-offset-2">Додайте або відновіть рахунок</Link>, щоб зберегти {recurring ? 'шаблон' : 'транзакцію'}.
         </p>
       )}
       {!availableCategories.length && !keptCategory && (
@@ -198,14 +258,14 @@ export default function TransactionForm({ accounts, changesByAccount, categories
       )}
       {(errorMessage || saveError) && (
         <p role="alert" className="mt-4 text-sm text-rose-300">
-          {errorMessage || (confirming ? 'Не вдалося підтвердити транзакцію. Спробуйте ще раз.' : 'Не вдалося зберегти транзакцію. Спробуйте ще раз.')}
+          {errorMessage || `${saveErrorMessage} Спробуйте ще раз.`}
         </p>
       )}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={isSaving} className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">
           {isSaving ? 'Зберігаємо…' : submitLabel}
         </button>
-        <Link to={confirming || status === 'planned' ? '/transactions/planned' : '/transactions'} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
+        <Link to={cancelPath} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
           Скасувати
         </Link>
       </div>

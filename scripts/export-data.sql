@@ -24,5 +24,12 @@ select jsonb_pretty(jsonb_build_object(
       'amount_uah_kop', t.amount_uah_kop::text
     ) order by t.id), '[]'::jsonb)
     from public.transfers t
+  ),
+  'recurring_templates', (
+    select coalesce(jsonb_agg(to_jsonb(r) || jsonb_build_object(
+      'amount_original_kop', r.amount_original_kop::text,
+      'rate', r.rate::text
+    ) order by r.id), '[]'::jsonb)
+    from public.recurring_templates r
   )
 )) as backup;

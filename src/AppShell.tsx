@@ -3,6 +3,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import AccountsPage from './accounts/AccountsPage'
 import HomePage from './home/HomePage'
+import { recurringPath } from './recurring/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -10,6 +11,8 @@ const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
 const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
 const TransferPage = lazy(() => import('./transfers/TransferPage'))
 const PlannedOperationsPage = lazy(() => import('./transactions/PlannedOperationsPage'))
+const RecurringTemplatesPage = lazy(() => import('./recurring/RecurringTemplatesPage'))
+const RecurringEditorPage = lazy(() => import('./recurring/RecurringEditorPage'))
 const ForecastPage = lazy(() => import('./forecast/ForecastPage'))
 
 const home = { path: '/', label: 'Головна' }
@@ -219,6 +222,30 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             element={
               <SectionPage title={planned.label} showQuickAdd={false}>
                 <PlannedOperationsPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path={recurringPath}
+            element={
+              <SectionPage title="Повторювані операції" showQuickAdd={false}>
+                <RecurringTemplatesPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path={`${recurringPath}/new`}
+            element={
+              <SectionPage title="Додати шаблон" showQuickAdd={false}>
+                <RecurringEditorPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path={`${recurringPath}/:templateId/edit`}
+            element={
+              <SectionPage title="Редагувати шаблон" showQuickAdd={false}>
+                <RecurringEditorPage client={client} />
               </SectionPage>
             }
           />

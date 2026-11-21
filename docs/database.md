@@ -73,7 +73,8 @@
 | Поле | Тип | Опис |
 |---|---|---|
 | status | text | `planned` (заплановано) або `confirmed` (підтверджено). Для існуючих записів — `confirmed` |
-| template_id | uuid, може бути порожнім | майбутнє поле в `transactions` для операцій із шаблону `recurring_templates` |
+| template_id | uuid, може бути порожнім | у `transactions` зв’язує операцію з шаблоном `recurring_templates` |
+| occurrence_number | integer, може бути порожнім | порядковий номер операції в шаблоні. Унікальний у межах шаблону |
 
 Майбутня дата дозволена для операцій зі статусом `planned`. Для `confirmed` дата має бути не пізніше сьогодні за київським часом. Фактичні баланси й підсумки враховують тільки `confirmed`.
 
@@ -88,6 +89,7 @@
 | currency | text | `UAH` або `USD` |
 | amount_original_kop | bigint | сума за одне повторення |
 | rate | numeric | курс для планових операцій |
+| purchase_name | text | необов’язкова назва покупки для витрат |
 | comment | text | необов'язково |
 | frequency | text | `weekly` (щотижня) або `monthly` (щомісяця) |
 | start_date | date | дата першого повторення; наступні — через тиждень або місяць у той самий день |

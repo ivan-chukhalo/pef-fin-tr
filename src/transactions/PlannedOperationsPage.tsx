@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { todayInKyiv } from '../lib/dates'
 import { useLoadData } from '../lib/useLoadData'
+import { recurringPath } from '../recurring/data'
 import { loadTransfers } from '../transfers/data'
 import { loadTransactionOptions, loadTransactions } from './data'
 import OperationList from './OperationList'
@@ -34,6 +35,7 @@ export default function PlannedOperationsPage({ client }: { client: SupabaseClie
       <div className="flex flex-wrap gap-2">
         <Link to="/transactions/new?plan=1" className={buttonClass}>Запланувати транзакцію</Link>
         <Link to="/transactions/transfer?plan=1" className={buttonClass}>Запланувати переказ</Link>
+        <Link to={recurringPath} className={buttonClass}>Повторювані операції</Link>
       </div>
       <OperationList {...data} today={todayInKyiv()} label="Заплановані операції" emptyMessage="Запланованих операцій ще немає." showTransactionActions />
     </div>
