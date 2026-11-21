@@ -1,9 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OperationStatus } from '../lib/operations'
+import { readRows } from '../lib/readRows'
 
 export type TransferFields = {
   from_account_id: string
   to_account_id: string
   date: string
+  status: OperationStatus
   amount_uah_kop: string
   comment: string | null
 }
@@ -15,7 +18,11 @@ export type TransferReceipt = {
   savedEarlierWithDifferentDetails: boolean
 }
 
-const columns = 'id,from_account_id,to_account_id,date,amount_uah_kop::text,comment'
+const columns = 'id,from_account_id,to_account_id,date,status,amount_uah_kop::text,comment'
+
+export function loadTransfers(client: SupabaseClient, signal: AbortSignal, status: OperationStatus): Promise<Transfer[]> {
+  return readRows<Transfer>(client, 'transfers', columns, signal, ['status', status])
+}
 
 export async function saveTransfer(client: SupabaseClient, id: string, fields: TransferFields): Promise<TransferReceipt> {
   const { data, error } = await client.from('transfers')

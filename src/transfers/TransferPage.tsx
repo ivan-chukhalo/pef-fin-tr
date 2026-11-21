@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import AccountPicker, { type AccountOption } from '../accounts/AccountPicker'
 import { getAccountBalance, loadAccountOverview } from '../accounts/data'
-import { formatDate, isDateOnOrBefore, todayInKyiv } from '../lib/dates'
+import { formatDate } from '../lib/dates'
 import { formatKopecks, parseHryvnias } from '../lib/money'
+import OperationDateField from '../lib/OperationDateField'
+import { getOperationDateError, type OperationStatus } from '../lib/operations'
 import { useLoadData } from '../lib/useLoadData'
 import { saveTransfer, type TransferFields, type TransferReceipt } from './data'
 
@@ -13,16 +15,17 @@ const secondaryActionClass = 'inline-flex min-h-11 items-center rounded-xl borde
 const primaryActionClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 const invalidAccountsMessage = 'Оберіть два різні рахунки.'
 
-function TransferForm({ accounts, isSaving, saveError, onSave }: {
+function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: {
   accounts: AccountOption[]
+  initialStatus: OperationStatus
   isSaving: boolean
   saveError: boolean
   onSave: (fields: TransferFields) => void
 }) {
   const [fromAccountId, setFromAccountId] = useState('')
   const [toAccountId, setToAccountId] = useState('')
+  const [status, setStatus] = useState(initialStatus)
   const [errorMessage, setErrorMessage] = useState('')
-  const today = todayInKyiv()
 
   function clearAccountSelectionError() {
     setErrorMessage((message) => message === invalidAccountsMessage ? '' : message)
@@ -36,8 +39,9 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
     const amount = parseHryvnias(String(fields.get('amount') ?? ''))
     const date = String(fields.get('date') ?? '')
 
-    if (!isDateOnOrBefore(date, todayInKyiv())) {
-      setErrorMessage('Вкажіть коректну дату, не пізнішу за сьогодні.')
+    const dateError = getOperationDateError(date, status)
+    if (dateError) {
+      setErrorMessage(dateError)
       return
     }
     if (fromAccountId === toAccountId ||
@@ -56,6 +60,7 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
       from_account_id: fromAccountId,
       to_account_id: toAccountId,
       date,
+      status,
       amount_uah_kop: amount.toString(),
       comment: String(fields.get('comment') ?? '').trim() || null,
     })
@@ -68,10 +73,7 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
           <label htmlFor="transfer-amount">Сума, грн</label>
           <input id="transfer-amount" name="amount" inputMode="decimal" className={fieldClass} autoFocus required />
         </div>
-        <div className="grid min-w-0 gap-2 text-sm font-medium">
-          <label htmlFor="transfer-date">Дата</label>
-          <input id="transfer-date" name="date" type="date" defaultValue={today} max={today} className={fieldClass} required />
-        </div>
+        <OperationDateField id="transfer-date" fieldClass={fieldClass} status={status} onStatusChange={setStatus} />
         <AccountPicker id="transfer-from" label="З рахунку" accounts={accounts} value={fromAccountId} onChange={(nextAccountId) => {
           setFromAccountId(nextAccountId)
           if (nextAccountId === toAccountId) setToAccountId('')
@@ -93,15 +95,17 @@ function TransferForm({ accounts, isSaving, saveError, onSave }: {
       )}
       <div className="mt-6 flex flex-wrap gap-3">
         <button type="submit" disabled={isSaving} className={primaryActionClass}>
-          {isSaving ? 'Зберігаємо…' : 'Зберегти переказ'}
+          {isSaving ? 'Зберігаємо…' : status === 'planned' ? 'Запланувати' : 'Зберегти переказ'}
         </button>
-        <Link to="/transactions" className={secondaryActionClass}>Скасувати</Link>
+        <Link to={status === 'planned' ? '/transactions/planned' : '/transactions'} className={secondaryActionClass}>Скасувати</Link>
       </div>
     </form>
   )
 }
 
 export default function TransferPage({ client }: { client: SupabaseClient }) {
+  const [params] = useSearchParams()
+  const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
   const [receipt, setReceipt] = useState<TransferReceipt | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -139,13 +143,14 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
 
   if (receipt) {
     const { transfer, savedEarlierWithDifferentDetails } = receipt
+    const planned = transfer.status === 'planned'
     const source = accounts.find(({ id }) => id === transfer.from_account_id)?.name
     const destination = accounts.find(({ id }) => id === transfer.to_account_id)?.name
 
     return (
       <div className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
         <p role="status" className="text-base font-semibold text-emerald-200">
-          {savedEarlierWithDifferentDetails ? 'Попередній переказ уже збережено. Нижче його реквізити.' : 'Переказ збережено.'}
+          {savedEarlierWithDifferentDetails ? 'Попередній переказ уже збережено. Нижче його реквізити.' : planned ? 'Переказ заплановано.' : 'Переказ збережено.'}
         </p>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
@@ -172,7 +177,7 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
           )}
         </dl>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link to="/more/accounts" className={primaryActionClass}>До рахунків</Link>
+          <Link to={planned ? '/transactions/planned' : '/more/accounts'} className={primaryActionClass}>{planned ? 'Заплановані' : 'До рахунків'}</Link>
           <button type="button" className={secondaryActionClass} onClick={() => {
             setDraftId(crypto.randomUUID())
             setReceipt(null)
@@ -202,5 +207,5 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
     balance: getAccountBalance(account, changesByAccount),
   }))
 
-  return <TransferForm key={draftId} accounts={accountOptions} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransferForm key={draftId} accounts={accountOptions} initialStatus={initialStatus} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }

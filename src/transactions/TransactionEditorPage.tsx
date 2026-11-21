@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
+import type { OperationStatus } from '../lib/operations'
 import { useLoadData } from '../lib/useLoadData'
 import { loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
-function TransactionEditor({ client, transactionId }: { client: SupabaseClient; transactionId?: string }) {
+function TransactionEditor({ client, transactionId, initialStatus }: { client: SupabaseClient; transactionId?: string; initialStatus: OperationStatus }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -34,7 +35,8 @@ function TransactionEditor({ client, transactionId }: { client: SupabaseClient; 
     setSaveError(false)
     try {
       await saveTransaction(client, draftId, fields, !transactionId)
-      navigate(`/transactions?month=${fields.date.slice(0, 7)}`, { replace: true })
+      const destination = fields.status === 'planned' ? '/transactions/planned' : `/transactions?month=${fields.date.slice(0, 7)}`
+      navigate(destination, { replace: true })
     } catch {
       setSaveError(true)
     } finally {
@@ -63,10 +65,12 @@ function TransactionEditor({ client, transactionId }: { client: SupabaseClient; 
     )
   }
 
-  return <TransactionForm {...data} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransactionForm {...data} initialStatus={initialStatus} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
 export default function TransactionEditorPage({ client }: { client: SupabaseClient }) {
   const { transactionId } = useParams()
-  return <TransactionEditor key={transactionId ?? 'new'} client={client} transactionId={transactionId} />
+  const [params] = useSearchParams()
+  const initialStatus = !transactionId && params.get('plan') === '1' ? 'planned' : 'confirmed'
+  return <TransactionEditor key={transactionId ?? initialStatus} client={client} transactionId={transactionId} initialStatus={initialStatus} />
 }

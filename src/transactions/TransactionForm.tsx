@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import AccountPicker from '../accounts/AccountPicker'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
-import { isDateOnOrBefore, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
+import OperationDateField from '../lib/OperationDateField'
+import { getOperationDateError, type OperationStatus } from '../lib/operations'
 import type { Currency, Transaction, TransactionFields } from './data'
 import { convertToUah, parseExchangeRate } from './exchange'
 
@@ -26,16 +27,18 @@ type TransactionFormProps = {
   categories: Category[]
   transaction: Transaction | null
   lastUsdRate: string
+  initialStatus: OperationStatus
   isSaving: boolean
   saveError: boolean
   onSave: (fields: TransactionFields) => void
 }
 
-export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, isSaving, saveError, onSave }: TransactionFormProps) {
+export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, initialStatus, isSaving, saveError, onSave }: TransactionFormProps) {
   const activeAccounts = accounts.filter((account) => !account.is_hidden)
   const [accountId, setAccountId] = useState(transaction?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
   const [categoryId, setCategoryId] = useState(transaction?.category_id ?? '')
   const [type, setType] = useState<CategoryType>(transaction?.type ?? 'expense')
+  const [status, setStatus] = useState(initialStatus)
   const [currency, setCurrency] = useState<Currency>(transaction?.currency ?? 'UAH')
   const [amountInput, setAmountInput] = useState(transaction ? formatBalanceInput(BigInt(transaction.amount_original_kop)) : '')
   const [rateInput, setRateInput] = useState((transaction?.currency === 'USD' ? transaction.rate : lastUsdRate).replace('.', ','))
@@ -52,7 +55,6 @@ export default function TransactionForm({ accounts, changesByAccount, categories
   const amount = parseHryvnias(amountInput)
   const rate = currency === 'UAH' ? '1' : parseExchangeRate(rateInput)
   const converted = amount !== null && amount > 0n && rate ? convertToUah(amount, rate) : null
-  const today = todayInKyiv()
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -60,8 +62,9 @@ export default function TransactionForm({ accounts, changesByAccount, categories
 
     const fields = new FormData(event.currentTarget)
     const date = String(fields.get('date') ?? '')
-    if (!isDateOnOrBefore(date, todayInKyiv())) {
-      setErrorMessage('Вкажіть коректну дату, не пізнішу за сьогодні.')
+    const dateError = getOperationDateError(date, status)
+    if (dateError) {
+      setErrorMessage(dateError)
       return
     }
     if (!validAccount || !validCategory) {
@@ -87,6 +90,7 @@ export default function TransactionForm({ accounts, changesByAccount, categories
       category_id: categoryId,
       type,
       date,
+      status,
       currency,
       amount_original_kop: amount.toString(),
       rate,
@@ -112,9 +116,7 @@ export default function TransactionForm({ accounts, changesByAccount, categories
             <option value="income">Дохід</option>
           </select>
         </Field>
-        <Field id="transaction-date" label="Дата">
-          <input id="transaction-date" type="date" name="date" className={fieldClass} defaultValue={transaction?.date ?? today} max={today} required />
-        </Field>
+        <OperationDateField id="transaction-date" fieldClass={fieldClass} existingDate={transaction?.date} status={status} onStatusChange={setStatus} />
         <Field id="transaction-amount" label="Сума">
           <input id="transaction-amount" className={fieldClass} inputMode="decimal" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} autoFocus required />
         </Field>
@@ -190,9 +192,9 @@ export default function TransactionForm({ accounts, changesByAccount, categories
       )}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={isSaving} className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">
-          {isSaving ? 'Зберігаємо…' : 'Зберегти'}
+          {isSaving ? 'Зберігаємо…' : status === 'planned' ? 'Запланувати' : 'Зберегти'}
         </button>
-        <Link to="/transactions" className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
+        <Link to={status === 'planned' ? '/transactions/planned' : '/transactions'} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
           Скасувати
         </Link>
       </div>

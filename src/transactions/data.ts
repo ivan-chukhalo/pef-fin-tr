@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
+import type { OperationStatus } from '../lib/operations'
 import { readRows } from '../lib/readRows'
 
 export type Currency = 'UAH' | 'USD'
@@ -10,6 +11,7 @@ export type TransactionFields = {
   category_id: string
   type: CategoryType
   date: string
+  status: OperationStatus
   currency: Currency
   amount_original_kop: string
   rate: string
@@ -23,10 +25,10 @@ export type Transaction = TransactionFields & {
   created_at: string
 }
 
-const columns = 'id,account_id,category_id,type,date,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
+const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
 
-export function loadTransactions(client: SupabaseClient, signal: AbortSignal): Promise<Transaction[]> {
-  return readRows<Transaction>(client, 'transactions', columns, signal)
+export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatus = 'confirmed'): Promise<Transaction[]> {
+  return readRows<Transaction>(client, 'transactions', columns, signal, ['status', status])
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal) {
@@ -55,6 +57,7 @@ export async function loadTransaction(client: SupabaseClient, id: string, signal
   const { data, error } = await client.from('transactions')
     .select(columns)
     .eq('id', id)
+    .eq('status', 'confirmed')
     .abortSignal(signal)
     .maybeSingle()
     .overrideTypes<Transaction, { merge: false }>()
@@ -66,6 +69,7 @@ export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSigna
   const { data, error } = await client.from('transactions')
     .select('rate::text')
     .eq('currency', 'USD')
+    .eq('status', 'confirmed')
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(1)
@@ -80,13 +84,13 @@ export async function saveTransaction(client: SupabaseClient, id: string, fields
   const table = client.from('transactions')
   const query = isNew
     ? table.upsert({ id, ...fields }, { onConflict: 'id' })
-    : table.update(fields).eq('id', id)
+    : table.update(fields).eq('id', id).eq('status', 'confirmed')
 
   const { error } = await query.select('id').single()
   if (error) throw error
 }
 
 export async function deleteTransaction(client: SupabaseClient, id: string) {
-  const { error } = await client.from('transactions').delete().eq('id', id)
+  const { error } = await client.from('transactions').delete().eq('id', id).eq('status', 'confirmed')
   if (error) throw error
 }

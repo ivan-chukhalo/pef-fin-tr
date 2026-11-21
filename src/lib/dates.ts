@@ -13,11 +13,17 @@ export function todayInKyiv(now = new Date()): string {
   return `${parts.year}-${parts.month}-${parts.day}`
 }
 
-export function isDateOnOrBefore(value: string, latest: string): boolean {
+export function isDateOnOrBefore(value: string, latest = '9999-12-31'): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000') || value > latest) return false
 
   const date = new Date(`${value}T00:00:00Z`)
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
+export function nextCalendarDate(value: string): string {
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
 }
 
 export function formatDate(value: string): string {

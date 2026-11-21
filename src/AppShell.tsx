@@ -9,6 +9,7 @@ const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
 const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
 const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
 const TransferPage = lazy(() => import('./transfers/TransferPage'))
+const PlannedOperationsPage = lazy(() => import('./transactions/PlannedOperationsPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -25,6 +26,7 @@ const sections = [home, transactions, analytics, ...additionalSections]
 const more = { path: '/more', label: 'Ще' }
 const addTransaction = { path: '/transactions/new', label: 'Додати транзакцію' }
 const transfer = { path: '/transactions/transfer', label: 'Переказ' }
+const planned = { path: '/transactions/planned', label: 'Заплановані' }
 
 const focusClass = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const sidebarLinkClass = `flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 aria-[current=page]:bg-emerald-300/10 aria-[current=page]:text-emerald-200 ${focusClass}`
@@ -150,14 +152,11 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
               element={
                 <SectionPage
                   title={label}
-                  action={path === transactions.path && (
-                    <Link
-                      to={transfer.path}
-                      className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}
-                    >
-                      {transfer.label}
+                  action={path === transactions.path && [planned, transfer].map(({ path, label }) => (
+                    <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
+                      {label}
                     </Link>
-                  )}
+                  ))}
                 >
                   {path === home.path && <HomePage client={client} />}
                   {path === analytics.path && <AnalyticsPage client={client} />}
@@ -200,6 +199,14 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             element={
               <SectionPage title={transfer.label}>
                 <TransferPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path={planned.path}
+            element={
+              <SectionPage title={planned.label} showQuickAdd={false}>
+                <PlannedOperationsPage client={client} />
               </SectionPage>
             }
           />

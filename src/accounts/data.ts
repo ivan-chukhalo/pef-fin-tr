@@ -44,7 +44,7 @@ export function loadAccounts(client: SupabaseClient, signal?: AbortSignal): Prom
 }
 
 export function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal): Promise<TransferAmount[]> {
-  return readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal)
+  return readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal, ['status', 'confirmed'])
 }
 
 export function getAccountBalanceChanges(transactions: readonly TransactionAmount[], transfers: readonly TransferAmount[]): Map<string, bigint> {
@@ -74,7 +74,7 @@ export async function loadAccountOverview(
 ): Promise<AccountOverview> {
   const [accounts, transactions, transfers] = await Promise.all([
     loadAccounts(client, signal),
-    readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal),
+    readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal, ['status', 'confirmed']),
     loadTransferAmounts(client, signal),
   ])
 

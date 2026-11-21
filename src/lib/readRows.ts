@@ -5,6 +5,7 @@ export async function readRows<Row extends { id: string }>(
   table: string,
   columns: string,
   signal?: AbortSignal,
+  filter?: [column: string, value: string],
 ): Promise<Row[]> {
   const rows: Row[] = []
   let lastId: string | undefined
@@ -15,6 +16,7 @@ export async function readRows<Row extends { id: string }>(
       .order('id')
       .limit(500)
     if (signal) query.abortSignal(signal)
+    if (filter) query.eq(...filter)
     if (lastId) query.gt('id', lastId)
 
     const { data, error, count } = await query.overrideTypes<Row[], { merge: false }>()
