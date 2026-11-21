@@ -5,10 +5,10 @@ import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
 import type { OperationStatus } from '../lib/operations'
 import { useLoadData } from '../lib/useLoadData'
-import { loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
+import { confirmTransaction, loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
-function TransactionEditor({ client, transactionId, initialStatus }: { client: SupabaseClient; transactionId?: string; initialStatus: OperationStatus }) {
+function TransactionEditor({ client, transactionId, initialStatus, confirming }: { client: SupabaseClient; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -20,11 +20,11 @@ function TransactionEditor({ client, transactionId, initialStatus }: { client: S
         ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
         : loadAccountOverview(client, signal),
       loadCategories(client, signal),
-      transactionId ? loadTransaction(client, transactionId, signal) : null,
+      transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all') : null,
       loadLastUsdRate(client, signal),
     ])
     return { ...accountData, categories, transaction, lastUsdRate }
-  }, [client, transactionId])
+  }, [client, transactionId, confirming])
   const { data, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransactionFields) {
@@ -34,8 +34,10 @@ function TransactionEditor({ client, transactionId, initialStatus }: { client: S
     setIsSaving(true)
     setSaveError(false)
     try {
-      await saveTransaction(client, draftId, fields, !transactionId)
-      const destination = fields.status === 'planned' ? '/transactions/planned' : `/transactions?month=${fields.date.slice(0, 7)}`
+      let date = fields.date
+      if (confirming) date = await confirmTransaction(client, draftId, fields)
+      else await saveTransaction(client, draftId, fields, !transactionId)
+      const destination = fields.status === 'planned' ? '/transactions/planned' : `/transactions?month=${date.slice(0, 7)}`
       navigate(destination, { replace: true })
     } catch {
       setSaveError(true)
@@ -60,17 +62,18 @@ function TransactionEditor({ client, transactionId, initialStatus }: { client: S
     return (
       <div className="mt-6 space-y-3">
         <p role="alert">Транзакцію не знайдено.</p>
-        <Link to="/transactions" className="text-emerald-200 underline underline-offset-2">До списку транзакцій</Link>
+        <Link to={confirming ? '/transactions/planned' : '/transactions'} className="text-emerald-200 underline underline-offset-2">{confirming ? 'До запланованих' : 'До списку транзакцій'}</Link>
       </div>
     )
   }
 
-  return <TransactionForm {...data} initialStatus={initialStatus} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  const status = confirming ? 'confirmed' : data.transaction?.status ?? initialStatus
+  return <TransactionForm {...data} initialStatus={status} confirming={confirming} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
-export default function TransactionEditorPage({ client }: { client: SupabaseClient }) {
+export default function TransactionEditorPage({ client, confirming = false }: { client: SupabaseClient; confirming?: boolean }) {
   const { transactionId } = useParams()
   const [params] = useSearchParams()
   const initialStatus = !transactionId && params.get('plan') === '1' ? 'planned' : 'confirmed'
-  return <TransactionEditor key={transactionId ?? initialStatus} client={client} transactionId={transactionId} initialStatus={initialStatus} />
+  return <TransactionEditor key={confirming ? `confirm-${transactionId}` : transactionId ?? initialStatus} client={client} transactionId={transactionId} initialStatus={initialStatus} confirming={confirming} />
 }

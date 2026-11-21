@@ -199,6 +199,14 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             }
           />
           <Route
+            path="/transactions/:transactionId/confirm"
+            element={
+              <SectionPage title="Підтвердити транзакцію" showQuickAdd={false}>
+                <TransactionEditorPage client={client} confirming />
+              </SectionPage>
+            }
+          />
+          <Route
             path={transfer.path}
             element={
               <SectionPage title={transfer.label}>

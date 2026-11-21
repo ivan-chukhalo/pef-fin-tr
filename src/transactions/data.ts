@@ -53,12 +53,13 @@ export async function loadTransactionHistory(client: SupabaseClient, signal: Abo
   return { ...options, transactions }
 }
 
-export async function loadTransaction(client: SupabaseClient, id: string, signal: AbortSignal): Promise<Transaction | null> {
-  const { data, error } = await client.from('transactions')
+export async function loadTransaction(client: SupabaseClient, id: string, signal?: AbortSignal, status: OperationStatusFilter = 'confirmed'): Promise<Transaction | null> {
+  const query = client.from('transactions')
     .select(columns)
     .eq('id', id)
-    .eq('status', 'confirmed')
-    .abortSignal(signal)
+  if (status !== 'all') query.eq('status', status)
+  if (signal) query.abortSignal(signal)
+  const { data, error } = await query
     .maybeSingle()
     .overrideTypes<Transaction, { merge: false }>()
   if (error) throw error
@@ -84,7 +85,7 @@ export async function saveTransaction(client: SupabaseClient, id: string, fields
   const table = client.from('transactions')
   const query = isNew
     ? table.upsert({ id, ...fields }, { onConflict: 'id' })
-    : table.update(fields).eq('id', id).eq('status', 'confirmed')
+    : table.update(fields).eq('id', id).eq('status', fields.status)
 
   const { error } = await query.select('id').single()
   if (error) throw error
@@ -93,4 +94,20 @@ export async function saveTransaction(client: SupabaseClient, id: string, fields
 export async function deleteTransaction(client: SupabaseClient, id: string) {
   const { error } = await client.from('transactions').delete().eq('id', id).eq('status', 'confirmed')
   if (error) throw error
+}
+
+export async function confirmTransaction(client: SupabaseClient, id: string, { date, amount_original_kop, rate }: Pick<TransactionFields, 'date' | 'amount_original_kop' | 'rate'>): Promise<string> {
+  const { data, error } = await client.from('transactions')
+    .update({ date, amount_original_kop, rate, status: 'confirmed' })
+    .eq('id', id)
+    .eq('status', 'planned')
+    .select('date')
+    .maybeSingle()
+    .overrideTypes<{ date: string }, { merge: false }>()
+  if (error) throw error
+  if (data) return data.date
+
+  const confirmed = await loadTransaction(client, id)
+  if (!confirmed) throw new Error('Planned transaction not found')
+  return confirmed.date
 }

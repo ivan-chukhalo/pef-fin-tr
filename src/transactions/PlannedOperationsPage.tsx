@@ -35,7 +35,7 @@ export default function PlannedOperationsPage({ client }: { client: SupabaseClie
         <Link to="/transactions/new?plan=1" className={buttonClass}>Запланувати транзакцію</Link>
         <Link to="/transactions/transfer?plan=1" className={buttonClass}>Запланувати переказ</Link>
       </div>
-      <OperationList {...data} today={todayInKyiv()} label="Заплановані операції" emptyMessage="Запланованих операцій ще немає." />
+      <OperationList {...data} today={todayInKyiv()} label="Заплановані операції" emptyMessage="Запланованих операцій ще немає." showTransactionActions />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import AccountPicker from '../accounts/AccountPicker'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
+import { todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, type OperationStatus } from '../lib/operations'
@@ -28,12 +29,13 @@ type TransactionFormProps = {
   transaction: Transaction | null
   lastUsdRate: string
   initialStatus: OperationStatus
+  confirming: boolean
   isSaving: boolean
   saveError: boolean
   onSave: (fields: TransactionFields) => void
 }
 
-export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, initialStatus, isSaving, saveError, onSave }: TransactionFormProps) {
+export default function TransactionForm({ accounts, changesByAccount, categories, transaction, lastUsdRate, initialStatus, confirming, isSaving, saveError, onSave }: TransactionFormProps) {
   const activeAccounts = accounts.filter((account) => !account.is_hidden)
   const [accountId, setAccountId] = useState(transaction?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
   const [categoryId, setCategoryId] = useState(transaction?.category_id ?? '')
@@ -55,6 +57,8 @@ export default function TransactionForm({ accounts, changesByAccount, categories
   const amount = parseHryvnias(amountInput)
   const rate = currency === 'UAH' ? '1' : parseExchangeRate(rateInput)
   const converted = amount !== null && amount > 0n && rate ? convertToUah(amount, rate) : null
+  const formLabel = confirming ? 'Підтвердити транзакцію' : transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'
+  const submitLabel = confirming ? 'Підтвердити' : !transaction && status === 'planned' ? 'Запланувати' : 'Зберегти'
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -62,7 +66,7 @@ export default function TransactionForm({ accounts, changesByAccount, categories
 
     const fields = new FormData(event.currentTarget)
     const date = String(fields.get('date') ?? '')
-    const dateError = getOperationDateError(date, status)
+    const dateError = getOperationDateError(date, status, transaction?.date)
     if (dateError) {
       setErrorMessage(dateError)
       return
@@ -100,15 +104,15 @@ export default function TransactionForm({ accounts, changesByAccount, categories
   }
 
   return (
-    <form aria-label={transaction ? 'Редагувати транзакцію' : 'Додати транзакцію'} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
+    <form aria-label={formLabel} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
       <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
         {type === 'expense' && (
           <Field id="transaction-purchase-name" label="Назва покупки (необов’язково)" wide>
-            <input id="transaction-purchase-name" className={fieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
+            <input id="transaction-purchase-name" className={fieldClass} value={purchaseName} readOnly={confirming} onChange={(event) => setPurchaseName(event.target.value)} />
           </Field>
         )}
         <Field id="transaction-type" label="Тип операції">
-          <select id="transaction-type" className={fieldClass} value={type} onChange={(event) => {
+          <select id="transaction-type" className={fieldClass} value={type} disabled={confirming} onChange={(event) => {
             setType(event.target.value === 'income' ? 'income' : 'expense')
             setCategoryId('')
           }}>
@@ -116,12 +120,19 @@ export default function TransactionForm({ accounts, changesByAccount, categories
             <option value="income">Дохід</option>
           </select>
         </Field>
-        <OperationDateField id="transaction-date" fieldClass={fieldClass} existingDate={transaction?.date} status={status} onStatusChange={setStatus} />
+        <OperationDateField
+          id="transaction-date"
+          fieldClass={fieldClass}
+          existingDate={confirming ? todayInKyiv() : transaction?.date}
+          status={status}
+          onStatusChange={setStatus}
+          label={confirming ? 'Фактична дата' : 'Дата'}
+        />
         <Field id="transaction-amount" label="Сума">
           <input id="transaction-amount" className={fieldClass} inputMode="decimal" value={amountInput} onChange={(event) => setAmountInput(event.target.value)} autoFocus required />
         </Field>
         <Field id="transaction-currency" label="Валюта">
-          <select id="transaction-currency" className={fieldClass} value={currency} onChange={(event) => setCurrency(event.target.value === 'USD' ? 'USD' : 'UAH')}>
+          <select id="transaction-currency" className={fieldClass} value={currency} disabled={confirming} onChange={(event) => setCurrency(event.target.value === 'USD' ? 'USD' : 'UAH')}>
             <option value="UAH">Гривня (UAH)</option>
             <option value="USD">Долар США (USD)</option>
           </select>
@@ -156,7 +167,7 @@ export default function TransactionForm({ accounts, changesByAccount, categories
           />
         ) : (
           <Field id="transaction-account" label="Рахунок">
-            <select id="transaction-account" className={fieldClass} value={accountId} onChange={(event) => setAccountId(event.target.value)} required>
+            <select id="transaction-account" className={fieldClass} value={accountId} disabled={confirming} onChange={(event) => setAccountId(event.target.value)} required>
               <option value="" disabled>Оберіть рахунок</option>
               {keptAccount && <option value={keptAccount.id} disabled>{keptAccount.name} (приховано)</option>}
               {activeAccounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
@@ -164,14 +175,14 @@ export default function TransactionForm({ accounts, changesByAccount, categories
           </Field>
         )}
         <Field id="transaction-category" label="Категорія">
-          <select id="transaction-category" className={fieldClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
+          <select id="transaction-category" className={fieldClass} value={categoryId} disabled={confirming} onChange={(event) => setCategoryId(event.target.value)} required>
             <option value="" disabled>Оберіть категорію</option>
             {keptCategory && <option value={keptCategory.id} disabled>{keptCategory.name} (приховано)</option>}
             {availableCategories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
           </select>
         </Field>
         <Field id="transaction-comment" label="Коментар (необов’язково)" wide>
-          <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={transaction?.comment ?? ''} />
+          <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={transaction?.comment ?? ''} readOnly={confirming} />
         </Field>
       </fieldset>
 
@@ -187,14 +198,14 @@ export default function TransactionForm({ accounts, changesByAccount, categories
       )}
       {(errorMessage || saveError) && (
         <p role="alert" className="mt-4 text-sm text-rose-300">
-          {errorMessage || 'Не вдалося зберегти транзакцію. Спробуйте ще раз.'}
+          {errorMessage || (confirming ? 'Не вдалося підтвердити транзакцію. Спробуйте ще раз.' : 'Не вдалося зберегти транзакцію. Спробуйте ще раз.')}
         </p>
       )}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <button type="submit" disabled={isSaving} className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">
-          {isSaving ? 'Зберігаємо…' : status === 'planned' ? 'Запланувати' : 'Зберегти'}
+          {isSaving ? 'Зберігаємо…' : submitLabel}
         </button>
-        <Link to={status === 'planned' ? '/transactions/planned' : '/transactions'} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
+        <Link to={confirming || status === 'planned' ? '/transactions/planned' : '/transactions'} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">
           Скасувати
         </Link>
       </div>
