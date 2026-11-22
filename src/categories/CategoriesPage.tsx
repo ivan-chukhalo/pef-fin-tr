@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
 import CategoryForm from './CategoryForm'
-import { getAvailableCategories, loadCategories, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
+import { deleteUnusedCategory, getAvailableCategories, loadCategories, loadUsedCategoryIds, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
+const categoryActionClass = `${buttonClass} inline-flex min-w-11 items-center justify-center`
 const categoryTypes = [
   { type: 'expense', label: 'Витрати' },
   { type: 'income', label: 'Доходи' },
@@ -13,14 +14,22 @@ function CategoryList({
   categories,
   label,
   disabled,
+  usedCategoryIds,
+  categoryToDelete,
   onRename,
   onToggleHidden,
+  onChooseDeletion,
+  onDelete,
 }: {
   categories: Category[]
   label: string
   disabled: boolean
+  usedCategoryIds: ReadonlySet<string> | null
+  categoryToDelete: string | null
   onRename: (category: Category) => void
   onToggleHidden: (category: Category) => void
+  onChooseDeletion: (id: string | null) => void
+  onDelete: (category: Category) => void
 }) {
   return (
     <ul aria-label={label} className="grid gap-2">
@@ -28,28 +37,76 @@ function CategoryList({
         const action = category.is_hidden ? 'Відновити' : 'Приховати'
 
         return (
-          <li key={category.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-            <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{category.name}</span>
-            <div className="flex flex-wrap gap-2">
+          <li key={category.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+            <span className="text-sm font-medium [overflow-wrap:anywhere]">{category.name}</span>
+            <div className="flex gap-2">
               <button
                 type="button"
-                className={buttonClass}
+                className={categoryActionClass}
                 disabled={disabled}
                 aria-label={`Перейменувати категорію ${category.name}`}
                 onClick={() => onRename(category)}
               >
-                Перейменувати
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
+                  <path d="m15 5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z" />
+                </svg>
+                <span className="hidden md:inline">Перейменувати</span>
               </button>
               <button
                 type="button"
-                className={buttonClass}
+                className={categoryActionClass}
                 disabled={disabled}
                 aria-label={`${action} категорію ${category.name}`}
                 onClick={() => onToggleHidden(category)}
               >
-                {action}
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
+                  {category.is_hidden ? (
+                    <>
+                      <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M3 3l18 18M10.6 6.1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.3M6.5 7.5C3.6 9.3 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8" />
+                      <path d="M10.2 10.2a2.5 2.5 0 0 0 3.6 3.6" />
+                    </>
+                  )}
+                </svg>
+                <span className="hidden md:inline">{action}</span>
               </button>
+              {usedCategoryIds && !usedCategoryIds.has(category.id) && (
+                <button
+                  type="button"
+                  className={categoryActionClass}
+                  disabled={disabled}
+                  aria-label={`Видалити категорію ${category.name}`}
+                  onClick={() => onChooseDeletion(category.id)}
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
+                    <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+                  </svg>
+                  <span className="hidden md:inline">Видалити</span>
+                </button>
+              )}
             </div>
+            {categoryToDelete === category.id && (
+              <div className="col-span-2 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
+                <p className="text-sm text-rose-100 [overflow-wrap:anywhere]">Видалити категорію «{category.name}»?</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="min-h-11 rounded-xl bg-rose-300 px-3 text-sm font-semibold text-zinc-950 hover:bg-rose-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300 disabled:opacity-50"
+                    disabled={disabled}
+                    onClick={() => onDelete(category)}
+                  >
+                    Так, видалити
+                  </button>
+                  <button type="button" className={buttonClass} disabled={disabled} onClick={() => onChooseDeletion(null)}>
+                    Скасувати
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         )
       })}
@@ -59,6 +116,8 @@ function CategoryList({
 
 export default function CategoriesPage({ client }: { client: SupabaseClient }) {
   const [categories, setCategories] = useState<Category[] | null>(null)
+  const [usedCategoryIds, setUsedCategoryIds] = useState<ReadonlySet<string> | null>(null)
+  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null)
   const [categoryType, setCategoryType] = useState<CategoryType>('expense')
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
@@ -78,12 +137,21 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
         if (!controller.signal.aborted) setLoadError(true)
       },
     )
+    void loadUsedCategoryIds(client, controller.signal).then(
+      (ids) => {
+        if (!controller.signal.aborted) setUsedCategoryIds(ids)
+      },
+      () => {
+        if (!controller.signal.aborted) setUsedCategoryIds(null)
+      },
+    )
 
     return () => controller.abort()
   }, [client, loadAttempt])
 
   function openEditor(category?: Category) {
     setFeedback(null)
+    setCategoryToDelete(null)
     setEditor({
       id: category?.id ?? crypto.randomUUID(),
       initialName: category?.name ?? '',
@@ -126,10 +194,29 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
 
   function handleToggleHidden(category: Category) {
     const isHidden = !category.is_hidden
+    setCategoryToDelete(null)
     void applyCategoryChange(async () => {
       upsertCategoryInList(await setCategoryHidden(client, category.id, isHidden))
       return isHidden ? 'Категорію приховано.' : 'Категорію відновлено.'
     }, 'Не вдалося змінити видимість категорії. Спробуйте ще раз.')
+  }
+
+  function chooseDeletion(id: string | null) {
+    setFeedback(null)
+    setCategoryToDelete(id)
+  }
+
+  function handleDelete(category: Category) {
+    void applyCategoryChange(async () => {
+      const removed = await deleteUnusedCategory(client, category.id)
+      setCategoryToDelete(null)
+      if (!removed) {
+        setUsedCategoryIds((current) => current && new Set([...current, category.id]))
+        throw new Error('Category is in use')
+      }
+      setCategories((current) => current && current.filter(({ id }) => id !== category.id))
+      return 'Категорію видалено.'
+    }, 'Не вдалося видалити категорію. Категорію з операціями можна приховати.')
   }
 
   if (!categories) {
@@ -157,8 +244,12 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
   const groupName = categoryType === 'expense' ? 'витрат' : 'доходів'
   const listActions = {
     disabled: isSaving || !!editor,
+    usedCategoryIds,
+    categoryToDelete,
     onRename: openEditor,
     onToggleHidden: handleToggleHidden,
+    onChooseDeletion: chooseDeletion,
+    onDelete: handleDelete,
   }
 
   return (
@@ -171,7 +262,10 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
               type="button"
               aria-pressed={categoryType === type}
               disabled={isSaving || !!editor}
-              onClick={() => setCategoryType(type)}
+              onClick={() => {
+                setCategoryType(type)
+                setCategoryToDelete(null)
+              }}
               className="min-h-10 rounded-lg px-3 text-sm font-medium text-zinc-300 hover:bg-zinc-800 aria-pressed:bg-emerald-300/10 aria-pressed:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60"
             >
               {label}

@@ -62,6 +62,22 @@ export async function setCategoryHidden(client: SupabaseClient, id: string, isHi
   return data
 }
 
+export async function loadUsedCategoryIds(client: SupabaseClient, signal: AbortSignal) {
+  const rows = await readRows<{ id: string }>(client, 'category_history', 'id', signal, ['state', 'used'])
+  return new Set(rows.map(({ id }) => id))
+}
+
+export async function deleteUnusedCategory(client: SupabaseClient, id: string): Promise<boolean> {
+  const table = client.from('categories')
+  const { data: deleted, error } = await table.delete().eq('id', id).select('id').maybeSingle()
+  if (error) throw error
+  if (deleted) return true
+
+  const { data: remaining, error: readError } = await table.select('id').eq('id', id).maybeSingle()
+  if (readError) throw readError
+  return remaining === null
+}
+
 async function defaultCategoryId(userId: string, key: string): Promise<string> {
   // Keep the UUID stable per owner and template so retrying never replaces that category.
   const input = new TextEncoder().encode(`pef-fin-tr:category:${userId}:${key}`)

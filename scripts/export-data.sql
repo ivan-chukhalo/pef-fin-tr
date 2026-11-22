@@ -31,5 +31,9 @@ select jsonb_pretty(jsonb_build_object(
       'rate', r.rate::text
     ) order by r.id), '[]'::jsonb)
     from public.recurring_templates r
+  ),
+  'category_history', (
+    select coalesce(jsonb_agg(to_jsonb(h) order by h.user_id, h.id), '[]'::jsonb)
+    from public.category_history h
   )
 )) as backup;
