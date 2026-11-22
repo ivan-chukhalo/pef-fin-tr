@@ -1,5 +1,5 @@
-import type { MonobankAccount, MonobankEntry } from '../src/monobank/types.ts'
-import { defaultStatementPeriod, getStatementInterval } from '../src/monobank/period.ts'
+import type { MonobankAccount, MonobankEntry } from '../src/monobank/types.js'
+import { defaultStatementPeriod, getStatementInterval } from '../src/monobank/period.js'
 
 type Environment = Record<string, string | undefined>
 const bankUrl = 'https://api.monobank.ua'

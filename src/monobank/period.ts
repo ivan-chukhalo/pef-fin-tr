@@ -1,4 +1,4 @@
-import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates.ts'
+import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates.js'
 
 export type StatementPeriod = { from: string; to: string }
 
