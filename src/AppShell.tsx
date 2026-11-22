@@ -16,6 +16,7 @@ const RecurringEditorPage = lazy(() => import('./recurring/RecurringEditorPage')
 const ForecastPage = lazy(() => import('./forecast/ForecastPage'))
 const BackupDownload = lazy(() => import('./settings/BackupDownload'))
 const BackupRestore = lazy(() => import('./settings/BackupRestore'))
+const MonobankPage = lazy(() => import('./monobank/MonobankPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -35,6 +36,7 @@ const more = { path: '/more', label: 'Ще' }
 const addTransaction = { path: '/transactions/new', label: 'Додати транзакцію' }
 const transfer = { path: '/transactions/transfer', label: 'Переказ' }
 const planned = { path: '/transactions/planned', label: 'Заплановані' }
+const monobank = { path: '/transactions/monobank', label: 'Підтягнути з monobank' }
 
 const focusClass = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const sidebarLinkClass = `flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 aria-[current=page]:bg-emerald-300/10 aria-[current=page]:text-emerald-200 ${focusClass}`
@@ -160,7 +162,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
               element={
                 <SectionPage
                   title={label}
-                  action={path === transactions.path && [planned, transfer].map(({ path, label }) => (
+                  action={path === transactions.path && [planned, transfer, monobank].map(({ path, label }) => (
                     <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
                       {label}
                     </Link>
@@ -226,6 +228,14 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             element={
               <SectionPage title={planned.label} showQuickAdd={false}>
                 <PlannedOperationsPage client={client} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path={monobank.path}
+            element={
+              <SectionPage title="Імпорт із monobank" showQuickAdd={false}>
+                <MonobankPage client={client} />
               </SectionPage>
             }
           />
