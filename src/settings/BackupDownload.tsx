@@ -1,21 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useRef, useState } from 'react'
 import { todayInKyiv } from '../lib/dates'
-
-const collections = ['accounts', 'categories', 'transactions', 'transfers', 'recurring_templates', 'category_history'] as const
-
-type Backup = Record<(typeof collections)[number], unknown[]> & {
-  format_version: number
-  exported_at: string
-}
-
-function isBackup(value: unknown): value is Backup {
-  if (!value || typeof value !== 'object') return false
-
-  const fields = value as Record<string, unknown>
-  return fields.format_version === 1 && typeof fields.exported_at === 'string' &&
-    Number.isFinite(Date.parse(fields.exported_at)) && collections.every((name) => Array.isArray(fields[name]))
-}
+import { isBackup } from './backup'
 
 export default function BackupDownload({ client }: { client: SupabaseClient }) {
   const [status, setStatus] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle')

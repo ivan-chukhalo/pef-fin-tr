@@ -4,7 +4,6 @@ import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'reac
 import AccountsPage from './accounts/AccountsPage'
 import HomePage from './home/HomePage'
 import { recurringPath } from './recurring/data'
-import BackupDownload from './settings/BackupDownload'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -15,6 +14,8 @@ const PlannedOperationsPage = lazy(() => import('./transactions/PlannedOperation
 const RecurringTemplatesPage = lazy(() => import('./recurring/RecurringTemplatesPage'))
 const RecurringEditorPage = lazy(() => import('./recurring/RecurringEditorPage'))
 const ForecastPage = lazy(() => import('./forecast/ForecastPage'))
+const BackupDownload = lazy(() => import('./settings/BackupDownload'))
+const BackupRestore = lazy(() => import('./settings/BackupRestore'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -181,6 +182,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                         Керувати категоріями
                       </Link>
                       <BackupDownload client={client} />
+                      <BackupRestore client={client} />
                     </div>
                   )}
                 </SectionPage>
