@@ -4,14 +4,22 @@ import { getAccountBalance } from '../accounts/data'
 import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
-import OperationList, { type TransactionActions } from '../transactions/OperationList'
+import OperationList, { type OperationSort, type TransactionActions } from '../transactions/OperationList'
 import { getForecast, loadForecastData, type ForecastData } from './data'
 
-function ForecastResults({ data, today, date, transactionActions }: {
+const sortOptions = [
+  { value: 'date', label: 'За датою' },
+  { value: 'amount-asc', label: 'Від менших' },
+  { value: 'amount-desc', label: 'Від більших' },
+] as const
+
+function ForecastResults({ data, today, date, transactionActions, sortBy, onSortChange }: {
   data: ForecastData
   today: string
   date: string
   transactionActions: TransactionActions
+  sortBy: OperationSort
+  onSortChange: (sort: OperationSort) => void
 }) {
   const { changesByAccount, periodTransactions, periodTransfers, overdueTransactions, overdueTransfers } = getForecast(data, today, date)
   const activeAccounts = data.accounts.filter((account) => !account.is_hidden)
@@ -38,10 +46,27 @@ function ForecastResults({ data, today, date, transactionActions }: {
       </section>
 
       <section aria-labelledby="forecast-period">
-        <h2 id="forecast-period" className="text-lg font-semibold">Операції за період</h2>
-        <p className="mb-3 mt-1 text-sm text-zinc-400">
-          <time dateTime={today}>{formatDate(today)}</time> – <time dateTime={date}>{formatDate(date)}</time>
-        </p>
+        <div className="mb-3 flex flex-col flex-wrap gap-x-4 gap-y-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="forecast-period" className="text-lg font-semibold">Операції за період</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              <time dateTime={today}>{formatDate(today)}</time> – <time dateTime={date}>{formatDate(date)}</time>
+            </p>
+          </div>
+          <div role="group" aria-label="Сортування операцій" className="flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 sm:ml-auto sm:justify-end">
+            {sortOptions.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={sortBy === value}
+                onClick={() => onSortChange(value)}
+                className="min-h-10 rounded-lg px-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800 aria-pressed:bg-emerald-300/10 aria-pressed:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-emerald-300"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <OperationList
           accounts={data.accounts}
           categories={data.categories}
@@ -50,6 +75,7 @@ function ForecastResults({ data, today, date, transactionActions }: {
           today={today}
           label="Операції за період"
           emptyMessage="За цей період операцій немає."
+          sortBy={sortBy}
           showStatus
           transactionActions={transactionActions}
           headingTag="h3"
@@ -78,6 +104,7 @@ function ForecastResults({ data, today, date, transactionActions }: {
 
 export default function ForecastPage({ client }: { client: SupabaseClient }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<OperationSort>('date')
   const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal), [client])
   const { data, setData, hasError, retry } = useLoadData(load)
   const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
@@ -111,7 +138,14 @@ export default function ForecastPage({ client }: { client: SupabaseClient }) {
         <input id="forecast-date" type="date" min={tomorrow} value={date} onChange={(event) => setSelectedDate(event.target.value)} className="min-h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30" />
       </div>
       {isDateOnOrBefore(date) && date >= tomorrow ? (
-        <ForecastResults data={data} today={today} date={date} transactionActions={{ client, onChange: onTransactionChange }} />
+        <ForecastResults
+          data={data}
+          today={today}
+          date={date}
+          transactionActions={{ client, onChange: onTransactionChange }}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+        />
       ) : (
         <p role="status" className="text-sm text-zinc-400">Оберіть майбутню дату.</p>
       )}

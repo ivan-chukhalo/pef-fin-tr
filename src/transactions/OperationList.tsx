@@ -15,6 +15,8 @@ export type TransactionActions = {
   onChange: (id: string, transaction: Transaction | null) => void
 }
 
+export type OperationSort = 'date' | 'amount-asc' | 'amount-desc'
+
 type OperationListProps = {
   transactions: readonly Transaction[]
   transfers: readonly Transfer[]
@@ -23,6 +25,7 @@ type OperationListProps = {
   today: string
   label: string
   emptyMessage: string
+  sortBy?: OperationSort
   showStatus?: boolean
   transactionActions?: TransactionActions
   headingTag?: 'h2' | 'h3'
@@ -80,7 +83,10 @@ function PlannedTransactionActions({ id, client, onChange }: TransactionActions 
   )
 }
 
-export default function OperationList({ transactions, transfers, accounts, categories, today, label, emptyMessage, showStatus = false, transactionActions, headingTag: Heading = 'h2' }: OperationListProps) {
+export default function OperationList({
+  transactions, transfers, accounts, categories, today, label, emptyMessage, sortBy = 'date',
+  showStatus = false, transactionActions, headingTag: Heading = 'h2',
+}: OperationListProps) {
   const accountNames = new Map(accounts.map(({ id, name }) => [id, name]))
   const categoriesById = new Map(categories.map((category) => [category.id, category]))
   const accountName = (id: string) => accountNames.get(id) ?? 'Рахунок'
@@ -113,7 +119,17 @@ export default function OperationList({ transactions, transfers, accounts, categ
       comment: transfer.comment,
       plannedTransactionId: null,
     })),
-  ].sort((first, second) => first.date.localeCompare(second.date) || first.key.localeCompare(second.key))
+  ].sort((first, second) => {
+    if (sortBy !== 'date') {
+      const firstAmount = first.amount < 0n ? -first.amount : first.amount
+      const secondAmount = second.amount < 0n ? -second.amount : second.amount
+      if (firstAmount !== secondAmount) {
+        const ascending = firstAmount < secondAmount ? -1 : 1
+        return sortBy === 'amount-asc' ? ascending : -ascending
+      }
+    }
+    return first.date.localeCompare(second.date) || first.key.localeCompare(second.key)
+  })
 
   if (!operations.length) return <p className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 text-sm text-zinc-400">{emptyMessage}</p>
 
