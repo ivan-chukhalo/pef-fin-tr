@@ -99,6 +99,12 @@ export default function MonobankRow({
         </div>
       )}
       <fieldset disabled={busy} className="grid min-w-0 gap-3 sm:grid-cols-2">
+        {!transfer && type === 'expense' && (
+          <label className="grid min-w-0 gap-2 text-sm font-medium sm:col-span-2">
+            Назва покупки
+            <input className={monobankFieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
+          </label>
+        )}
         <label className="grid min-w-0 gap-2 text-sm font-medium">
           Тип операції
           <select className={monobankFieldClass} value={transfer ? 'transfer' : type} onChange={(event) => setTransfer(event.target.value === 'transfer')}>
@@ -115,21 +121,13 @@ export default function MonobankRow({
             </select>
           </label>
         ) : (
-          <>
-            <label className="grid min-w-0 gap-2 text-sm font-medium">
-              Категорія
-              <select className={monobankFieldClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-                <option value="" disabled>Вибери категорію</option>
-                {categoryOptions.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-              </select>
-            </label>
-            {type === 'expense' && (
-              <label className="grid min-w-0 gap-2 text-sm font-medium sm:col-span-2">
-                Назва покупки
-                <input className={monobankFieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
-              </label>
-            )}
-          </>
+          <label className="grid min-w-0 gap-2 text-sm font-medium">
+            {type === 'income' ? 'Категорія доходу' : 'Категорія витрати'}
+            <select className={monobankFieldClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+              <option value="" disabled>Вибери категорію</option>
+              {categoryOptions.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+            </select>
+          </label>
         )}
       </fieldset>
       <div className="flex flex-wrap gap-2">
