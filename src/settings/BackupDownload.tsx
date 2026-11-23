@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useRef, useState } from 'react'
-import { todayInKyiv } from '../lib/dates'
+import { formatDate, todayInKyiv } from '../lib/dates'
 import { isBackup } from './backup'
 
 export default function BackupDownload({ client }: { client: SupabaseClient }) {
@@ -20,7 +20,7 @@ export default function BackupDownload({ client }: { client: SupabaseClient }) {
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
       link.href = url
-      link.download = `pef-fin-tr-${todayInKyiv(new Date(data.exported_at))}.json`
+      link.download = `pef-fin-tr-${formatDate(todayInKyiv(new Date(data.exported_at)))}.json`
       document.body.append(link)
       try {
         link.click()

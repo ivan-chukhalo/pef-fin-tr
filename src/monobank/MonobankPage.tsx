@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAccountBalance, getAccountBalanceChanges } from '../accounts/data'
+import DateInput from '../lib/DateInput'
 import { todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -155,36 +156,36 @@ export default function MonobankPage({ client }: { client: SupabaseClient }) {
               {activeAccounts.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
             </select>
           </label>
-          <label className="grid min-w-0 gap-2 text-sm font-medium">
-            З
-            <input
+          <div className="grid min-w-0 gap-2 text-sm font-medium">
+            <label htmlFor="monobank-from">З</label>
+            <DateInput
+              id="monobank-from"
               aria-label="Дата початку виписки"
               aria-describedby="monobank-period-help"
               aria-invalid={Boolean(periodError)}
-              type="date"
               className={monobankFieldClass}
               min={earliestStatementDate}
               max={today}
-              value={period.from}
-              onChange={(event) => changePeriod('from', event.target.value)}
+              defaultValue={period.from}
+              onDateChange={(value) => changePeriod('from', value)}
               required
             />
-          </label>
-          <label className="grid min-w-0 gap-2 text-sm font-medium">
-            По
-            <input
+          </div>
+          <div className="grid min-w-0 gap-2 text-sm font-medium">
+            <label htmlFor="monobank-to">По</label>
+            <DateInput
+              id="monobank-to"
               aria-label="Дата закінчення виписки"
               aria-describedby="monobank-period-help"
               aria-invalid={Boolean(periodError)}
-              type="date"
               className={monobankFieldClass}
               min={earliestStatementDate}
               max={today}
-              value={period.to}
-              onChange={(event) => changePeriod('to', event.target.value)}
+              defaultValue={period.to}
+              onDateChange={(value) => changePeriod('to', value)}
               required
             />
-          </label>
+          </div>
         </fieldset>
         <p id="monobank-period-help" className={`text-sm ${periodError ? 'text-rose-300' : 'text-zinc-400'}`} aria-live="polite">
           {periodError || `До ${statementMaxDays} дня включно із вибраними датами.`}

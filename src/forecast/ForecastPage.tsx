@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useState } from 'react'
 import { getAccountBalance } from '../accounts/data'
+import DateInput from '../lib/DateInput'
 import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -135,7 +136,13 @@ export default function ForecastPage({ client }: { client: SupabaseClient }) {
     <div className="mt-6 space-y-6 sm:space-y-8">
       <div className="grid w-full max-w-64 gap-2 text-sm font-medium">
         <label htmlFor="forecast-date">Дата прогнозу</label>
-        <input id="forecast-date" type="date" min={tomorrow} value={date} onChange={(event) => setSelectedDate(event.target.value)} className="min-h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30" />
+        <DateInput
+          id="forecast-date"
+          min={tomorrow}
+          defaultValue={date}
+          onDateChange={setSelectedDate}
+          className="min-h-11 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30"
+        />
       </div>
       {isDateOnOrBefore(date) && date >= tomorrow ? (
         <ForecastResults

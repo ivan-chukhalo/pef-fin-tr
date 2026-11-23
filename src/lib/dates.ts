@@ -5,12 +5,12 @@ const kyivDate = new Intl.DateTimeFormat('uk-UA', {
   day: '2-digit',
 })
 
-const dayFormatter = new Intl.DateTimeFormat('uk-UA', { dateStyle: 'medium', timeZone: 'UTC' })
+const kyivTime = new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 const monthFormatter = new Intl.DateTimeFormat('uk-UA', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 export function todayInKyiv(now = new Date()): string {
   const parts = Object.fromEntries(kyivDate.formatToParts(now).map(({ type, value }) => [type, value]))
-  return `${parts.year}-${parts.month}-${parts.day}`
+  return `${parts.year.padStart(4, '0')}-${parts.month}-${parts.day}`
 }
 
 export function isDateOnOrBefore(value: string, latest = '9999-12-31'): boolean {
@@ -27,7 +27,13 @@ export function nextCalendarDate(value: string): string {
 }
 
 export function formatDate(value: string): string {
-  return dayFormatter.format(new Date(`${value}T00:00:00Z`))
+  const [year, month, day] = value.split('-')
+  return `${day}.${month}.${year}`
+}
+
+export function formatDateTimeInKyiv(value: string): string {
+  const date = new Date(value)
+  return `${formatDate(todayInKyiv(date))}, ${kyivTime.format(date)}`
 }
 
 export function formatMonth(value: string): string {

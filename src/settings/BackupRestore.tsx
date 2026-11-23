@@ -1,16 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { formatDateTimeInKyiv } from '../lib/dates'
 import { useLoadData } from '../lib/useLoadData'
 import { isBackupVersion, parseBackup, summaryKeys, summaryLabels, type Backup, type BackupVersion } from './backup'
 
 type Selection = { requestId: string } & ({ backup: Backup; fileName: string } | { version: BackupVersion })
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
-const dateFormatter = new Intl.DateTimeFormat('uk-UA', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'Europe/Kyiv',
-})
 
 export default function BackupRestore({ client }: { client: SupabaseClient }) {
   const [selection, setSelection] = useState<Selection | null>(null)
@@ -108,7 +104,7 @@ export default function BackupRestore({ client }: { client: SupabaseClient }) {
                 {'backup' in selection ? selection.fileName : 'Версія з історії'}
               </h3>
               <p className="text-sm text-zinc-300">
-                {dateFormatter.format(new Date('backup' in selection ? selection.backup.exported_at : selection.version.created_at))}
+                {formatDateTimeInKyiv('backup' in selection ? selection.backup.exported_at : selection.version.created_at)}
               </p>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -156,7 +152,7 @@ export default function BackupRestore({ client }: { client: SupabaseClient }) {
         {!!versions?.length && !historyError && (
           <ul aria-label="Збережені версії" className="divide-y divide-zinc-800">
             {versions.map((version) => {
-              const date = dateFormatter.format(new Date(version.created_at))
+              const date = formatDateTimeInKyiv(version.created_at)
               return (
                 <li key={version.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                   <time dateTime={version.created_at} className="text-sm font-medium">{date}</time>

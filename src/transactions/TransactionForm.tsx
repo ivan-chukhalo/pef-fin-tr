@@ -4,6 +4,7 @@ import AccountPicker from '../accounts/AccountPicker'
 import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
+import DateInput from '../lib/DateInput'
 import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
@@ -167,7 +168,7 @@ export default function TransactionForm(props: TransactionFormProps) {
         {recurring ? (
           <>
             <Field id="transaction-date" label="Дата першої операції">
-              <input id="transaction-date" name="date" type="date" className={fieldClass} defaultValue={template?.start_date ?? nextCalendarDate(todayInKyiv())} max="9999-12-31" required />
+              <DateInput id="transaction-date" name="date" className={fieldClass} defaultValue={template?.start_date ?? nextCalendarDate(todayInKyiv())} required />
             </Field>
             <Field id="recurring-frequency" label="Частота">
               <select id="recurring-frequency" name="frequency" className={fieldClass} defaultValue={template?.frequency ?? 'monthly'}>
