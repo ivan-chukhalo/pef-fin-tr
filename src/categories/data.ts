@@ -6,11 +6,12 @@ export type CategoryType = 'income' | 'expense'
 export type Category = {
   id: string
   name: string
+  color: string | null
   type: CategoryType
   is_hidden: boolean
 }
 
-const columns = 'id,name,type,is_hidden'
+const columns = 'id,name,color,type,is_hidden'
 const categoryOrder = new Intl.Collator('uk-UA')
 
 const defaults = [
@@ -38,12 +39,13 @@ export async function saveCategory(
   client: SupabaseClient,
   id: string,
   name: string,
+  color: string | null,
   newCategoryType?: CategoryType,
 ): Promise<Category> {
   const table = client.from('categories')
   const query = newCategoryType
-    ? table.upsert({ id, name, type: newCategoryType }, { onConflict: 'id' })
-    : table.update({ name }).eq('id', id)
+    ? table.upsert({ id, name, color, type: newCategoryType }, { onConflict: 'id' })
+    : table.update({ name, color }).eq('id', id)
 
   const { data, error } = await query.select(columns).single().overrideTypes<Category, { merge: false }>()
   if (error) throw error

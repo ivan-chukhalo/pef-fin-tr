@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Account } from '../accounts/data'
+import { categoryColorStyle } from '../categories/color'
 import { getAvailableCategories, type Category } from '../categories/data'
 import { formatDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
@@ -90,7 +91,7 @@ export default function MonobankRow({
           <p>Можливий збіг з обліком за рахунком, датою та сумою.</p>
           <ul className="list-inside list-disc [overflow-wrap:anywhere]">
             {matches.transactions.map((row) => (
-              <li key={row.id}>{getTransactionLabels(row, categories.find(({ id }) => id === row.category_id)?.name ?? 'Категорія').title}</li>
+              <li key={row.id}>{getTransactionLabels(row, categories.find(({ id }) => id === row.category_id)).title}</li>
             ))}
             {matches.transfers.map((row) => (
               <li key={row.id}>{accounts.find(({ id }) => id === row.from_account_id)?.name} → {accounts.find(({ id }) => id === row.to_account_id)?.name}</li>
@@ -123,7 +124,7 @@ export default function MonobankRow({
         ) : (
           <label className="grid min-w-0 gap-2 text-sm font-medium">
             {type === 'income' ? 'Категорія доходу' : 'Категорія витрати'}
-            <select className={monobankFieldClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            <select className={monobankFieldClass} style={categoryColorStyle(categoryOptions.find(({ id }) => id === categoryId)?.color)} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
               <option value="" disabled>Вибери категорію</option>
               {categoryOptions.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
             </select>

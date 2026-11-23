@@ -27,6 +27,7 @@
 | id | uuid | первинний ключ |
 | user_id | uuid | власник |
 | name | text | назва (можна змінювати) |
+| color | text | колір мітки у форматі `#RRGGBB`, `null` для нейтральної мітки |
 | type | text | `income` або `expense` |
 | is_hidden | boolean | приховано (за замовчуванням false) |
 | created_at | timestamptz | |

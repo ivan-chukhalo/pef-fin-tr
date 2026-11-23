@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { categoryColorStyle } from '../categories/color'
+import type { Category } from '../categories/data'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -11,10 +13,10 @@ const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-95
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const usdFormatter = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'USD' })
 
-function TransactionRow({ transaction, accountName, categoryName, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
+function TransactionRow({ transaction, accountName, category, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
   transaction: Transaction
   accountName: string
-  categoryName: string
+  category: Category | undefined
   confirming: boolean
   isDeleting: boolean
   onConfirm: () => void
@@ -23,15 +25,15 @@ function TransactionRow({ transaction, accountName, categoryName, confirming, is
 }) {
   const income = transaction.type === 'income'
   const amountUah = BigInt(transaction.amount_uah_kop)
-  const { title, categoryLabel } = getTransactionLabels(transaction, categoryName)
+  const { title, categoryLabel } = getTransactionLabels(transaction, category)
 
   return (
     <li className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
       <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)]">
         <div className="min-w-0">
           <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
-            {categoryLabel && <span>{categoryLabel}</span>}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
+            {categoryLabel}
             {(income || categoryLabel) && <span>{income ? 'Дохід' : 'Витрата'}</span>}
             <span>{accountName}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
@@ -155,7 +157,7 @@ export default function TransactionsPage({ client }: { client: SupabaseClient })
         </div>
         <div className="grid min-w-0 gap-2 text-sm font-medium">
           <label htmlFor="transaction-filter-category">Категорія</label>
-          <select id="transaction-filter-category" className={selectClass} value={categoryId} onChange={(event) => changeFilter('category', event.target.value)}>
+          <select id="transaction-filter-category" className={selectClass} style={categoryColorStyle(categories.get(categoryId)?.color)} value={categoryId} onChange={(event) => changeFilter('category', event.target.value)}>
             <option value="">Усі категорії</option>
             <optgroup label="Витрати">
               {data.categories.filter(({ type }) => type === 'expense').map(({ id, name, is_hidden }) => <option key={id} value={id}>{name}{is_hidden ? ' (приховано)' : ''}</option>)}
@@ -175,7 +177,7 @@ export default function TransactionsPage({ client }: { client: SupabaseClient })
               key={transaction.id}
               transaction={transaction}
               accountName={accounts.get(transaction.account_id)?.name ?? 'Рахунок'}
-              categoryName={categories.get(transaction.category_id)?.name ?? 'Категорія'}
+              category={categories.get(transaction.category_id)}
               confirming={confirmingId === transaction.id}
               isDeleting={isDeleting}
               onConfirm={() => {

@@ -24,11 +24,11 @@ const actionClass = 'inline-flex min-h-11 items-center rounded-xl border border-
 
 export default function OperationList({ transactions, transfers, accounts, categories, today, label, emptyMessage, showStatus = false, showTransactionActions = false, headingTag: Heading = 'h2' }: OperationListProps) {
   const accountNames = new Map(accounts.map(({ id, name }) => [id, name]))
-  const categoryNames = new Map(categories.map(({ id, name }) => [id, name]))
+  const categoriesById = new Map(categories.map((category) => [category.id, category]))
   const accountName = (id: string) => accountNames.get(id) ?? 'Рахунок'
   const operations = [
     ...transactions.map((transaction) => {
-      const { title, categoryLabel } = getTransactionLabels(transaction, categoryNames.get(transaction.category_id) ?? 'Категорія')
+      const { title, categoryLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
       const income = transaction.type === 'income'
       return {
         key: `transaction-${transaction.id}`,
@@ -63,8 +63,8 @@ export default function OperationList({ transactions, transfers, accounts, categ
         <li key={key} className="grid min-w-0 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:p-5">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <Heading className="font-semibold">{title}</Heading>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-zinc-400">
-              {categoryLabel && <span>{categoryLabel}</span>}
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400">
+              {categoryLabel}
               <span>{details}</span>
               <time dateTime={date}>{formatDate(date)}</time>
               {status === 'planned' && date <= today ? <span className="text-amber-200">Прострочено</span> : (

@@ -60,7 +60,7 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
   }
 
   const accountNames = new Map(data.accounts.map(({ id, name }) => [id, name]))
-  const categoryNames = new Map(data.categories.map(({ id, name }) => [id, name]))
+  const categories = new Map(data.categories.map((category) => [category.id, category]))
 
   return (
     <div className="mt-6 space-y-5">
@@ -73,7 +73,7 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
       ) : (
         <ul aria-label="Шаблони операцій" className="grid gap-3">
           {data.templates.map((template) => {
-            const { title, categoryLabel } = getTransactionLabels(template, categoryNames.get(template.category_id) ?? 'Категорія')
+            const { title, categoryLabel } = getTransactionLabels(template, categories.get(template.category_id))
             const income = template.type === 'income'
             const amount = BigInt(template.amount_original_kop) * (income ? 1n : -1n)
 
@@ -83,8 +83,8 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
                   <h2 className="font-semibold">{title}</h2>
                   <p className="font-semibold tabular-nums">{formatKopecks(amount, template.currency === 'USD' ? usdFormatter : undefined)}</p>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
-                  {categoryLabel && <span>{categoryLabel}</span>}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
+                  {categoryLabel}
                   {income && <span>Дохід</span>}
                   <span>{accountNames.get(template.account_id) ?? 'Рахунок'}</span>
                   <span>{frequencyLabels[template.frequency]}</span>

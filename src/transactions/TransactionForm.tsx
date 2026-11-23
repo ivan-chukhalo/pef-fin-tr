@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import AccountPicker from '../accounts/AccountPicker'
+import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
 import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
@@ -74,8 +75,9 @@ export default function TransactionForm(props: TransactionFormProps) {
   const keptCategory = categories.find((category) =>
     category.is_hidden && category.type === type && category.id === categoryId && category.id === details?.category_id,
   )
+  const selectedCategory = keptCategory ?? availableCategories.find(({ id }) => id === categoryId)
   const validAccount = Boolean(keptAccount) || activeAccounts.some(({ id }) => id === accountId)
-  const validCategory = Boolean(keptCategory) || availableCategories.some(({ id }) => id === categoryId)
+  const validCategory = Boolean(selectedCategory)
   const amount = parseHryvnias(amountInput)
   const rate = currency === 'UAH' ? '1' : parseExchangeRate(rateInput)
   const converted = amount !== null && amount > 0n && rate ? convertToUah(amount, rate) : null
@@ -235,7 +237,7 @@ export default function TransactionForm(props: TransactionFormProps) {
           </Field>
         )}
         <Field id="transaction-category" label="Категорія">
-          <select id="transaction-category" className={fieldClass} value={categoryId} disabled={confirming} onChange={(event) => setCategoryId(event.target.value)} required>
+          <select id="transaction-category" className={fieldClass} style={categoryColorStyle(selectedCategory?.color)} value={categoryId} disabled={confirming} onChange={(event) => setCategoryId(event.target.value)} required>
             <option value="" disabled>Оберіть категорію</option>
             {keptCategory && <option value={keptCategory.id} disabled>{keptCategory.name} (приховано)</option>}
             {availableCategories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}

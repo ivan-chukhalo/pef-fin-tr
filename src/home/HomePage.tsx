@@ -40,7 +40,7 @@ export default function HomePage({ client }: { client: SupabaseClient }) {
 
   const activeAccounts = data.accounts.filter((account) => !account.is_hidden)
   const accountsById = new Map(data.accounts.map((account) => [account.id, account.name]))
-  const categoriesById = new Map(data.categories.map((category) => [category.id, category.name]))
+  const categoriesById = new Map(data.categories.map((category) => [category.id, category]))
   const recentTransactions = data.transactions.slice(0, 5)
 
   return (
@@ -93,14 +93,13 @@ export default function HomePage({ client }: { client: SupabaseClient }) {
             {recentTransactions.map((transaction) => {
               const income = transaction.type === 'income'
               const amount = BigInt(transaction.amount_uah_kop)
-              const categoryName = categoriesById.get(transaction.category_id) ?? 'Категорія'
-              const { title, categoryLabel } = getTransactionLabels(transaction, categoryName)
+              const { title, categoryLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
               return (
                 <li key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-start gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium [overflow-wrap:anywhere]">{title}</p>
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
-                      {categoryLabel && <span>{categoryLabel}</span>}
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
+                      {categoryLabel}
                       <span>{accountsById.get(transaction.account_id) ?? 'Рахунок'}</span>
                       <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
                     </div>

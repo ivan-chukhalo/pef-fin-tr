@@ -1,3 +1,5 @@
+import { isCategoryColor } from '../categories/color'
+
 const summaryLabels = {
   accounts: 'Рахунки',
   categories: 'Категорії',
@@ -87,6 +89,10 @@ export function parseBackup(text: string): Backup {
   backup.transfers = backup.transfers.map((row) => ({ status: 'confirmed', ...row }))
   const ids = Object.fromEntries(collections.map((name) => [name, indexRows(backup[name])])) as
     Record<(typeof collections)[number], Map<string, BackupRow>>
+
+  if (backup.categories.some(({ color }) => color != null && !isCategoryColor(color))) {
+    throw new Error('У резервній копії є категорія з некоректним кольором.')
+  }
 
   const referencedCategories = new Set<string>()
   for (const row of [...backup.transactions, ...backup.recurring_templates]) {

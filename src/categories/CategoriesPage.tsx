@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useEffect, useRef, useState } from 'react'
 import CategoryForm from './CategoryForm'
+import CategoryLabel from './CategoryLabel'
 import { deleteUnusedCategory, getAvailableCategories, loadCategories, loadUsedCategoryIds, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
@@ -16,7 +17,7 @@ function CategoryList({
   disabled,
   usedCategoryIds,
   categoryToDelete,
-  onRename,
+  onEdit,
   onToggleHidden,
   onChooseDeletion,
   onDelete,
@@ -26,7 +27,7 @@ function CategoryList({
   disabled: boolean
   usedCategoryIds: ReadonlySet<string> | null
   categoryToDelete: string | null
-  onRename: (category: Category) => void
+  onEdit: (category: Category) => void
   onToggleHidden: (category: Category) => void
   onChooseDeletion: (id: string | null) => void
   onDelete: (category: Category) => void
@@ -38,19 +39,19 @@ function CategoryList({
 
         return (
           <li key={category.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-            <span className="text-sm font-medium [overflow-wrap:anywhere]">{category.name}</span>
+            <div className="min-w-0 text-sm"><CategoryLabel name={category.name} color={category.color} /></div>
             <div className="flex gap-2">
               <button
                 type="button"
                 className={categoryActionClass}
                 disabled={disabled}
-                aria-label={`Перейменувати категорію ${category.name}`}
-                onClick={() => onRename(category)}
+                aria-label={`Редагувати категорію ${category.name}`}
+                onClick={() => onEdit(category)}
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
                   <path d="m15 5 4 4M4 20l4.5-1 11-11a2.8 2.8 0 0 0-4-4l-11 11L4 20Z" />
                 </svg>
-                <span className="hidden md:inline">Перейменувати</span>
+                <span className="hidden md:inline">Редагувати</span>
               </button>
               <button
                 type="button"
@@ -121,7 +122,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
   const [categoryType, setCategoryType] = useState<CategoryType>('expense')
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
-  const [editor, setEditor] = useState<{ id: string; initialName: string; isNew: boolean } | null>(null)
+  const [editor, setEditor] = useState<{ id: string; initialName: string; initialColor: string | null; isNew: boolean } | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null)
   const saving = useRef(false)
@@ -155,6 +156,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     setEditor({
       id: category?.id ?? crypto.randomUUID(),
       initialName: category?.name ?? '',
+      initialColor: category?.color ?? null,
       isNew: !category,
     })
   }
@@ -181,14 +183,14 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     }
   }
 
-  function handleSave(name: string) {
+  function handleSave(name: string, color: string | null) {
     if (!editor) return
 
     void applyCategoryChange(async () => {
-      const category = await saveCategory(client, editor.id, name, editor.isNew ? categoryType : undefined)
+      const category = await saveCategory(client, editor.id, name, color, editor.isNew ? categoryType : undefined)
       upsertCategoryInList(category)
       setEditor(null)
-      return editor.isNew ? 'Категорію додано.' : 'Категорію перейменовано.'
+      return editor.isNew ? 'Категорію додано.' : 'Зміни категорії збережено.'
     }, 'Не вдалося зберегти категорію. Спробуйте ще раз.')
   }
 
@@ -246,7 +248,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     disabled: isSaving || !!editor,
     usedCategoryIds,
     categoryToDelete,
-    onRename: openEditor,
+    onEdit: openEditor,
     onToggleHidden: handleToggleHidden,
     onChooseDeletion: chooseDeletion,
     onDelete: handleDelete,
@@ -283,6 +285,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
         <CategoryForm
           key={editor.id}
           initialName={editor.initialName}
+          initialColor={editor.initialColor}
           isNew={editor.isNew}
           isSaving={isSaving}
           onSave={handleSave}

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import CategoryLabel from '../categories/CategoryLabel'
 import { formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -29,7 +30,7 @@ export default function AnalyticsPage({ client }: { client: SupabaseClient }) {
   const availableMonths = [...new Set([currentMonth, ...data.months.keys()])].sort((first, second) => second.localeCompare(first))
   const summary = data.months.get(month)
   const totalExpense = summary?.expense ?? 0n
-  const categories = new Map(data.categories.map(({ id, name }) => [id, name]))
+  const categories = new Map(data.categories.map((category) => [category.id, category]))
   const expenses = [...(summary?.expensesByCategory ?? [])].sort(([, first], [, second]) => first === second ? 0 : first > second ? -1 : 1)
   const comparison = getComparisonMonths(month).map((key) => ({
     month: key,
@@ -64,17 +65,20 @@ export default function AnalyticsPage({ client }: { client: SupabaseClient }) {
         </dl>
         {expenses.length ? (
           <ul aria-labelledby="analytics-expenses" className="mt-4 grid gap-4">
-            {expenses.map(([categoryId, amount]) => (
-              <li key={categoryId}>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm [overflow-wrap:anywhere]">
-                  <span>{categories.get(categoryId) ?? 'Категорія'}</span>
-                  <span className="font-medium tabular-nums">{formatKopecks(amount)}</span>
-                </div>
-                <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                  <div className="h-full rounded-full bg-sky-300/80" style={{ width: `${totalExpense > 0n ? Number(amount * 10000n / totalExpense) / 100 : 0}%` }} />
-                </div>
-              </li>
-            ))}
+            {expenses.map(([categoryId, amount]) => {
+              const category = categories.get(categoryId)
+              return (
+                <li key={categoryId}>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm [overflow-wrap:anywhere]">
+                    <CategoryLabel name={category?.name ?? 'Категорія'} color={category?.color} />
+                    <span className="font-medium tabular-nums">{formatKopecks(amount)}</span>
+                  </div>
+                  <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                    <div className="h-full rounded-full bg-sky-300/80" style={{ width: `${totalExpense > 0n ? Number(amount * 10000n / totalExpense) / 100 : 0}%` }} />
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         ) : <p className="mt-4 text-sm text-zinc-400">За цей місяць витрат немає.</p>}
       </section>
