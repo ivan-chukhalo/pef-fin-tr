@@ -91,9 +91,11 @@ export async function saveTransaction(client: SupabaseClient, id: string, fields
   if (error) throw error
 }
 
-export async function deleteTransaction(client: SupabaseClient, id: string) {
-  const { error } = await client.from('transactions').delete().eq('id', id).eq('status', 'confirmed')
+export async function deleteTransaction(client: SupabaseClient, id: string, status: OperationStatus = 'confirmed'): Promise<boolean> {
+  const { data, error } = await client.from('transactions').delete()
+    .eq('id', id).eq('status', status).select('id').maybeSingle()
   if (error) throw error
+  return data !== null
 }
 
 export async function confirmTransaction(client: SupabaseClient, id: string, { date, amount_original_kop, rate }: Pick<TransactionFields, 'date' | 'amount_original_kop' | 'rate'>): Promise<string> {

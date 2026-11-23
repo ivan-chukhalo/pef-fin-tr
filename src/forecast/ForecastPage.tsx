@@ -4,10 +4,15 @@ import { getAccountBalance } from '../accounts/data'
 import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
-import OperationList from '../transactions/OperationList'
+import OperationList, { type TransactionActions } from '../transactions/OperationList'
 import { getForecast, loadForecastData, type ForecastData } from './data'
 
-function ForecastResults({ data, today, date }: { data: ForecastData; today: string; date: string }) {
+function ForecastResults({ data, today, date, transactionActions }: {
+  data: ForecastData
+  today: string
+  date: string
+  transactionActions: TransactionActions
+}) {
   const { changesByAccount, periodTransactions, periodTransfers, overdueTransactions, overdueTransfers } = getForecast(data, today, date)
   const activeAccounts = data.accounts.filter((account) => !account.is_hidden)
 
@@ -46,6 +51,7 @@ function ForecastResults({ data, today, date }: { data: ForecastData; today: str
           label="Операції за період"
           emptyMessage="За цей період операцій немає."
           showStatus
+          transactionActions={transactionActions}
           headingTag="h3"
         />
       </section>
@@ -61,6 +67,7 @@ function ForecastResults({ data, today, date }: { data: ForecastData; today: str
             today={today}
             label="Прострочені операції"
             emptyMessage="Прострочених операцій немає."
+            transactionActions={transactionActions}
             headingTag="h3"
           />
         </section>
@@ -72,7 +79,15 @@ function ForecastResults({ data, today, date }: { data: ForecastData; today: str
 export default function ForecastPage({ client }: { client: SupabaseClient }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal), [client])
-  const { data, hasError, retry } = useLoadData(load)
+  const { data, setData, hasError, retry } = useLoadData(load)
+  const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
+    setData((current) => current && {
+      ...current,
+      transactions: current.transactions.flatMap((transaction) =>
+        transaction.id !== id ? [transaction] : replacement ? [replacement] : [],
+      ),
+    })
+  }
 
   if (!data) {
     return hasError ? (
@@ -95,7 +110,9 @@ export default function ForecastPage({ client }: { client: SupabaseClient }) {
         <label htmlFor="forecast-date">Дата прогнозу</label>
         <input id="forecast-date" type="date" min={tomorrow} value={date} onChange={(event) => setSelectedDate(event.target.value)} className="min-h-11 min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30" />
       </div>
-      {isDateOnOrBefore(date) && date >= tomorrow ? <ForecastResults data={data} today={today} date={date} /> : (
+      {isDateOnOrBefore(date) && date >= tomorrow ? (
+        <ForecastResults data={data} today={today} date={date} transactionActions={{ client, onChange: onTransactionChange }} />
+      ) : (
         <p role="status" className="text-sm text-zinc-400">Оберіть майбутню дату.</p>
       )}
     </div>

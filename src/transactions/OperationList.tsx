@@ -1,11 +1,19 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Account } from '../accounts/data'
 import type { Category } from '../categories/data'
 import { formatDate } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
+import { isOverdueOperation } from '../lib/operations'
 import type { Transfer } from '../transfers/data'
-import type { Transaction } from './data'
+import { deleteTransaction, loadTransaction, type Transaction } from './data'
 import { getTransactionLabels } from './labels'
+
+export type TransactionActions = {
+  client: SupabaseClient
+  onChange: (id: string, transaction: Transaction | null) => void
+}
 
 type OperationListProps = {
   transactions: readonly Transaction[]
@@ -16,13 +24,63 @@ type OperationListProps = {
   label: string
   emptyMessage: string
   showStatus?: boolean
-  showTransactionActions?: boolean
+  transactionActions?: TransactionActions
   headingTag?: 'h2' | 'h3'
 }
 
-const actionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
+const actionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
-export default function OperationList({ transactions, transfers, accounts, categories, today, label, emptyMessage, showStatus = false, showTransactionActions = false, headingTag: Heading = 'h2' }: OperationListProps) {
+function PlannedTransactionActions({ id, client, onChange }: TransactionActions & { id: string }) {
+  const [confirming, setConfirming] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState(false)
+  const deleting = useRef(false)
+
+  async function remove() {
+    if (deleting.current) return
+    deleting.current = true
+    setIsDeleting(true)
+    setDeleteError(false)
+
+    try {
+      const deleted = await deleteTransaction(client, id, 'planned')
+      const current = deleted ? null : await loadTransaction(client, id, undefined, 'all')
+      onChange(id, current)
+      setConfirming(false)
+    } catch {
+      setDeleteError(true)
+    } finally {
+      deleting.current = false
+      setIsDeleting(false)
+    }
+  }
+
+  if (confirming) {
+    return (
+      <div className="space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3 sm:col-span-2">
+        <p className="text-sm text-rose-100">Видалити цю заплановану транзакцію?</p>
+        {deleteError && <p role="alert" className="text-sm text-rose-200">Не вдалося видалити транзакцію. Спробуй ще раз.</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={isDeleting} className="min-h-11 rounded-xl bg-rose-300 px-3 text-sm font-semibold text-zinc-950 hover:bg-rose-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300 disabled:opacity-50" onClick={() => void remove()}>
+            {isDeleting ? 'Видаляємо…' : 'Так, видалити'}
+          </button>
+          <button type="button" disabled={isDeleting} className={actionClass} onClick={() => { setConfirming(false); setDeleteError(false) }}>Скасувати</button>
+        </div>
+      </div>
+    )
+  }
+
+  const path = `/transactions/${id}`
+  return (
+    <div className="flex flex-wrap gap-2 sm:col-span-2">
+      <Link to={`${path}/edit`} className={actionClass}>Редагувати</Link>
+      <Link to={`${path}/confirm`} className={actionClass}>Підтвердити</Link>
+      <button type="button" className={actionClass} onClick={() => setConfirming(true)}>Видалити</button>
+    </div>
+  )
+}
+
+export default function OperationList({ transactions, transfers, accounts, categories, today, label, emptyMessage, showStatus = false, transactionActions, headingTag: Heading = 'h2' }: OperationListProps) {
   const accountNames = new Map(accounts.map(({ id, name }) => [id, name]))
   const categoriesById = new Map(categories.map((category) => [category.id, category]))
   const accountName = (id: string) => accountNames.get(id) ?? 'Рахунок'
@@ -40,7 +98,7 @@ export default function OperationList({ transactions, transfers, accounts, categ
         details: accountName(transaction.account_id),
         amount: BigInt(transaction.amount_uah_kop) * (income ? 1n : -1n),
         comment: transaction.comment,
-        transactionPath: showTransactionActions && transaction.status === 'planned' ? `/transactions/${transaction.id}` : null,
+        plannedTransactionId: transaction.status === 'planned' ? transaction.id : null,
       }
     }),
     ...transfers.map((transfer) => ({
@@ -53,7 +111,7 @@ export default function OperationList({ transactions, transfers, accounts, categ
       details: `${accountName(transfer.from_account_id)} → ${accountName(transfer.to_account_id)}`,
       amount: BigInt(transfer.amount_uah_kop),
       comment: transfer.comment,
-      transactionPath: null,
+      plannedTransactionId: null,
     })),
   ].sort((first, second) => first.date.localeCompare(second.date) || first.key.localeCompare(second.key))
 
@@ -61,7 +119,7 @@ export default function OperationList({ transactions, transfers, accounts, categ
 
   return (
     <ol aria-label={label} className="grid gap-3">
-      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, details, amount, comment, transactionPath }) => (
+      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, details, amount, comment, plannedTransactionId }) => (
         <li key={key} className="grid min-w-0 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:p-5">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <Heading className="font-semibold">{title}</Heading>
@@ -70,19 +128,14 @@ export default function OperationList({ transactions, transfers, accounts, categ
               {typeLabel && <span>{typeLabel}</span>}
               <span>{details}</span>
               <time dateTime={date}>{formatDate(date)}</time>
-              {status === 'planned' && date <= today ? <span className="text-amber-200">Прострочено</span> : (
+              {isOverdueOperation({ status, date }, today) ? <span className="text-amber-200">Прострочено</span> : (
                 showStatus && <span>{status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>
               )}
             </div>
             {comment && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{comment}</p>}
           </div>
           <p className="min-w-0 font-semibold tabular-nums [overflow-wrap:anywhere] sm:text-right">{formatKopecks(amount)}</p>
-          {transactionPath && (
-            <div className="flex flex-wrap gap-2 sm:col-span-2">
-              <Link to={`${transactionPath}/edit`} className={actionClass}>Редагувати</Link>
-              <Link to={`${transactionPath}/confirm`} className={actionClass}>Підтвердити</Link>
-            </div>
-          )}
+          {transactionActions && plannedTransactionId && <PlannedTransactionActions id={plannedTransactionId} {...transactionActions} />}
         </li>
       ))}
     </ol>

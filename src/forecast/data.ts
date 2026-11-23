@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAccountBalanceChanges } from '../accounts/data'
+import { isOverdueOperation } from '../lib/operations'
 import { loadTransactionOptions, loadTransactions, type Transaction } from '../transactions/data'
 import { loadTransfers } from '../transfers/data'
 
@@ -24,7 +25,7 @@ export function getForecast(data: ForecastData, today: string, date: string) {
   }
 
   function pastDue(operation: Pick<Transaction, 'date' | 'status'>) {
-    return operation.status === 'planned' && operation.date < today
+    return isOverdueOperation(operation, today)
   }
 
   const transactions = data.transactions.filter(throughDate)

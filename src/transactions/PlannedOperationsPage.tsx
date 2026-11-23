@@ -6,7 +6,7 @@ import { useLoadData } from '../lib/useLoadData'
 import { recurringPath } from '../recurring/data'
 import { loadTransfers } from '../transfers/data'
 import { loadTransactionOptions, loadTransactions } from './data'
-import OperationList from './OperationList'
+import OperationList, { type TransactionActions } from './OperationList'
 
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
@@ -19,7 +19,15 @@ export default function PlannedOperationsPage({ client }: { client: SupabaseClie
     ])
     return { ...options, transactions, transfers }
   }, [client])
-  const { data, hasError, retry } = useLoadData(load)
+  const { data, setData, hasError, retry } = useLoadData(load)
+  const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
+    setData((current) => current && {
+      ...current,
+      transactions: current.transactions.flatMap((transaction) =>
+        transaction.id !== id ? [transaction] : replacement?.status === 'planned' ? [replacement] : [],
+      ),
+    })
+  }
 
   if (!data) {
     return hasError ? (
@@ -37,7 +45,13 @@ export default function PlannedOperationsPage({ client }: { client: SupabaseClie
         <Link to="/transactions/transfer?plan=1" className={buttonClass}>Запланувати переказ</Link>
         <Link to={recurringPath} className={buttonClass}>Повторювані операції</Link>
       </div>
-      <OperationList {...data} today={todayInKyiv()} label="Заплановані операції" emptyMessage="Запланованих операцій ще немає." showTransactionActions />
+      <OperationList
+        {...data}
+        today={todayInKyiv()}
+        label="Заплановані операції"
+        emptyMessage="Запланованих операцій ще немає."
+        transactionActions={{ client, onChange: onTransactionChange }}
+      />
     </div>
   )
 }
