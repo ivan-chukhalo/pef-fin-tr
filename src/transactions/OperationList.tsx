@@ -28,7 +28,7 @@ export default function OperationList({ transactions, transfers, accounts, categ
   const accountName = (id: string) => accountNames.get(id) ?? 'Рахунок'
   const operations = [
     ...transactions.map((transaction) => {
-      const { title, categoryLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
+      const { title, categoryLabel, typeLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
       const income = transaction.type === 'income'
       return {
         key: `transaction-${transaction.id}`,
@@ -36,7 +36,8 @@ export default function OperationList({ transactions, transfers, accounts, categ
         status: transaction.status,
         title,
         categoryLabel,
-        details: income ? `Дохід · ${accountName(transaction.account_id)}` : accountName(transaction.account_id),
+        typeLabel,
+        details: accountName(transaction.account_id),
         amount: BigInt(transaction.amount_uah_kop) * (income ? 1n : -1n),
         comment: transaction.comment,
         transactionPath: showTransactionActions && transaction.status === 'planned' ? `/transactions/${transaction.id}` : null,
@@ -48,6 +49,7 @@ export default function OperationList({ transactions, transfers, accounts, categ
       status: transfer.status,
       title: 'Переказ',
       categoryLabel: null,
+      typeLabel: null,
       details: `${accountName(transfer.from_account_id)} → ${accountName(transfer.to_account_id)}`,
       amount: BigInt(transfer.amount_uah_kop),
       comment: transfer.comment,
@@ -59,12 +61,13 @@ export default function OperationList({ transactions, transfers, accounts, categ
 
   return (
     <ol aria-label={label} className="grid gap-3">
-      {operations.map(({ key, date, status, title, categoryLabel, details, amount, comment, transactionPath }) => (
+      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, details, amount, comment, transactionPath }) => (
         <li key={key} className="grid min-w-0 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:p-5">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <Heading className="font-semibold">{title}</Heading>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400">
               {categoryLabel}
+              {typeLabel && <span>{typeLabel}</span>}
               <span>{details}</span>
               <time dateTime={date}>{formatDate(date)}</time>
               {status === 'planned' && date <= today ? <span className="text-amber-200">Прострочено</span> : (

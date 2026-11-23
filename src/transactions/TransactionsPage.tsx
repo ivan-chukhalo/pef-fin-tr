@@ -25,7 +25,7 @@ function TransactionRow({ transaction, accountName, category, confirming, isDele
 }) {
   const income = transaction.type === 'income'
   const amountUah = BigInt(transaction.amount_uah_kop)
-  const { title, categoryLabel } = getTransactionLabels(transaction, category)
+  const { title, categoryLabel, typeLabel } = getTransactionLabels(transaction, category)
 
   return (
     <li className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
@@ -34,7 +34,7 @@ function TransactionRow({ transaction, accountName, category, confirming, isDele
           <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
             {categoryLabel}
-            {(income || categoryLabel) && <span>{income ? 'Дохід' : 'Витрата'}</span>}
+            <span>{typeLabel}</span>
             <span>{accountName}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
           </div>

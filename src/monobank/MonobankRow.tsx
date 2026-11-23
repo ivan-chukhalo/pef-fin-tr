@@ -90,9 +90,10 @@ export default function MonobankRow({
         <div className="space-y-1 rounded-xl border border-amber-900/70 bg-amber-950/20 p-3 text-sm text-amber-100">
           <p>Можливий збіг з обліком за рахунком, датою та сумою.</p>
           <ul className="list-inside list-disc [overflow-wrap:anywhere]">
-            {matches.transactions.map((row) => (
-              <li key={row.id}>{getTransactionLabels(row, categories.find(({ id }) => id === row.category_id)).title}</li>
-            ))}
+            {matches.transactions.map((row) => {
+              const { title, categoryLabel } = getTransactionLabels(row, categories.find(({ id }) => id === row.category_id))
+              return <li key={row.id}>{title} <span className="ms-1">{categoryLabel}</span></li>
+            })}
             {matches.transfers.map((row) => (
               <li key={row.id}>{accounts.find(({ id }) => id === row.from_account_id)?.name} → {accounts.find(({ id }) => id === row.to_account_id)?.name}</li>
             ))}
