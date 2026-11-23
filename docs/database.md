@@ -49,7 +49,7 @@
 | amount_original_kop | bigint | сума в оригінальній валюті, копійки (або центи) |
 | rate | numeric | курс на дату операції (для UAH дорівнює 1) |
 | amount_uah_kop | bigint | сума в гривнях, копійки, фіксується при збереженні |
-| purchase_name | text | необов’язкова назва покупки, лише для витрат |
+| purchase_name | text | необов’язкова назва доходу або покупки |
 | comment | text | необов'язково |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
@@ -92,7 +92,7 @@
 | currency | text | `UAH` або `USD` |
 | amount_original_kop | bigint | сума за одне повторення |
 | rate | numeric | курс для планових операцій |
-| purchase_name | text | необов’язкова назва покупки для витрат |
+| purchase_name | text | необов’язкова назва доходу або покупки, яку отримують операції з шаблону |
 | comment | text | необов'язково |
 | frequency | text | `weekly` (щотижня) або `monthly` (щомісяця) |
 | start_date | date | дата першого повторення; наступні — через тиждень або місяць у той самий день |

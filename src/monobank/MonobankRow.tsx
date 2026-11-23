@@ -30,7 +30,7 @@ export default function MonobankRow({
   const [transfer, setTransfer] = useState(false)
   const [categoryId, setCategoryId] = useState('')
   const [otherAccountId, setOtherAccountId] = useState('')
-  const [purchaseName, setPurchaseName] = useState(entry.description)
+  const [transactionName, setTransactionName] = useState(entry.description)
   const amount = BigInt(entry.amountKop)
   const type = amount > 0n ? 'income' : 'expense'
   const date = todayInKyiv(new Date(entry.time * 1000))
@@ -57,7 +57,7 @@ export default function MonobankRow({
         },
       })
     } else {
-      const purchase = type === 'expense' ? purchaseName.trim() || null : null
+      const name = transactionName.trim() || null
       onSave({
         kind: 'transaction',
         fields: {
@@ -67,8 +67,8 @@ export default function MonobankRow({
           date,
           status: 'confirmed',
           ...getMonobankAmounts(entry),
-          purchase_name: purchase,
-          comment: purchase === description ? null : description,
+          purchase_name: name,
+          comment: name === description ? null : description,
         },
       })
     }
@@ -101,10 +101,10 @@ export default function MonobankRow({
         </div>
       )}
       <fieldset disabled={busy} className="grid min-w-0 gap-3 sm:grid-cols-2">
-        {!transfer && type === 'expense' && (
+        {!transfer && (
           <label className="grid min-w-0 gap-2 text-sm font-medium sm:col-span-2">
-            Назва покупки
-            <input className={monobankFieldClass} value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} />
+            {type === 'income' ? 'Назва доходу' : 'Назва покупки'}
+            <input className={monobankFieldClass} value={transactionName} onChange={(event) => setTransactionName(event.target.value)} />
           </label>
         )}
         <label className="grid min-w-0 gap-2 text-sm font-medium">

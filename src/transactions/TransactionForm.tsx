@@ -67,7 +67,7 @@ export default function TransactionForm(props: TransactionFormProps) {
   const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
   const [amountInput, setAmountInput] = useState(details ? formatBalanceInput(BigInt(details.amount_original_kop)) : '')
   const [rateInput, setRateInput] = useState((details?.currency === 'USD' ? details.rate : lastUsdRate).replace('.', ','))
-  const [purchaseName, setPurchaseName] = useState(details?.purchase_name ?? '')
+  const [transactionName, setTransactionName] = useState(details?.purchase_name ?? '')
   const [errorMessage, setErrorMessage] = useState('')
 
   const availableCategories = getAvailableCategories(categories, type)
@@ -126,7 +126,7 @@ export default function TransactionForm(props: TransactionFormProps) {
       currency,
       amount_original_kop: amount.toString(),
       rate,
-      purchase_name: type === 'expense' ? purchaseName.trim() || null : null,
+      purchase_name: transactionName.trim() || null,
       comment: String(fields.get('comment') ?? '').trim() || null,
     }
 
@@ -152,11 +152,9 @@ export default function TransactionForm(props: TransactionFormProps) {
   return (
     <form aria-label={formLabel} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
       <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
-        {type === 'expense' && (
-          <Field id="transaction-purchase-name" label="Назва покупки (необов’язково)" wide>
-            <input id="transaction-purchase-name" className={fieldClass} value={purchaseName} readOnly={confirming} onChange={(event) => setPurchaseName(event.target.value)} />
-          </Field>
-        )}
+        <Field id="transaction-name" label={type === 'income' ? 'Назва доходу (необов’язково)' : 'Назва покупки (необов’язково)'} wide>
+          <input id="transaction-name" className={fieldClass} value={transactionName} readOnly={confirming} onChange={(event) => setTransactionName(event.target.value)} />
+        </Field>
         <Field id="transaction-type" label="Тип операції">
           <select id="transaction-type" className={fieldClass} value={type} disabled={confirming} onChange={(event) => {
             setType(event.target.value === 'income' ? 'income' : 'expense')
