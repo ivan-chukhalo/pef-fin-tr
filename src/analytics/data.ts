@@ -1,11 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadCategories } from '../categories/data'
-import { loadTransactions } from '../transactions/data'
+import { loadTransactions, type Transaction } from '../transactions/data'
+
+type CategoryExpenses = {
+  total: bigint
+  entries: { transaction: Transaction; amount: bigint }[]
+}
 
 type MonthSummary = {
   income: bigint
   expense: bigint
-  expensesByCategory: Map<string, bigint>
+  expensesByCategory: Map<string, CategoryExpenses>
 }
 
 export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal) {
@@ -27,8 +32,22 @@ export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal)
     summary[transaction.type] += amount
     if (transaction.type === 'expense') {
       const categoryId = transaction.category_id
-      const previous = summary.expensesByCategory.get(categoryId) ?? 0n
-      summary.expensesByCategory.set(categoryId, previous + amount)
+      let group = summary.expensesByCategory.get(categoryId)
+      if (!group) {
+        group = { total: 0n, entries: [] }
+        summary.expensesByCategory.set(categoryId, group)
+      }
+      group.total += amount
+      group.entries.push({ transaction, amount })
+    }
+  }
+
+  for (const summary of months.values()) {
+    for (const { entries } of summary.expensesByCategory.values()) {
+      entries.sort((first, second) => {
+        if (first.amount === second.amount) return second.transaction.date.localeCompare(first.transaction.date)
+        return first.amount > second.amount ? -1 : 1
+      })
     }
   }
 
