@@ -26,7 +26,7 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
 }) {
   const income = transaction.type === 'income'
   const amountUah = BigInt(transaction.amount_uah_kop)
-  const { title, categoryLabel, typeLabel } = getTransactionLabels(transaction, category)
+  const { title, categoryLabel, typeLabel, syncLabel } = getTransactionLabels(transaction, category)
 
   return (
     <li className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
@@ -36,6 +36,7 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
             {categoryLabel}
             <span>{typeLabel}</span>
+            {syncLabel}
             <span>{accountName}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
           </div>
@@ -53,7 +54,7 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
         </div>
       </div>
 
-      {!readOnly && (confirming ? (
+      {!readOnly && !transaction.syncState && (confirming ? (
         <div className="mt-4 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
           <p className="text-sm text-rose-100">Видалити цю транзакцію?</p>
           <div className="flex flex-wrap gap-2">
@@ -73,13 +74,13 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
   )
 }
 
-export default function TransactionsPage({ client, snapshot }: OfflinePageProps) {
+export default function TransactionsPage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
   const [params, setParams] = useSearchParams()
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal, snapshot), [client, snapshot])
+  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal, snapshot, pendingTransactions), [client, snapshot, pendingTransactions])
   const { data, setData, hasError, retry } = useLoadData(load)
 
   const currentMonth = todayInKyiv().slice(0, 7)

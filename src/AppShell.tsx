@@ -6,6 +6,7 @@ import { formatDateTimeInKyiv } from './lib/dates'
 import type { OfflinePageProps, OfflineSnapshot } from './offline/snapshot'
 import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
+import type { TransactionFields } from './transactions/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -69,28 +70,26 @@ function DesktopNavigation() {
   )
 }
 
-function MobileNavigation({ readOnly }: { readOnly: boolean }) {
+function MobileNavigation() {
   return (
     <nav
       aria-label="Нижня навігація"
       className="fixed inset-x-0 bottom-0 z-10 border-t border-zinc-800 bg-zinc-900 pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <div className={`mx-auto grid max-w-lg ${readOnly ? 'grid-cols-4' : 'grid-cols-5'} items-center gap-1 px-2 py-2`}>
+      <div className="mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 py-2">
         <NavLink to={home.path} className={mobileLinkClass}>
           {home.label}
         </NavLink>
         <NavLink to={transactions.path} className={mobileLinkClass}>
           {transactions.label}
         </NavLink>
-        {!readOnly && (
-          <NavLink
-            to={addTransaction.path}
-            aria-label={addTransaction.label}
-            className={`mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-300 text-3xl leading-none text-zinc-950 transition-colors hover:bg-emerald-200 ${focusClass}`}
-          >
-            <span aria-hidden="true">+</span>
-          </NavLink>
-        )}
+        <NavLink
+          to={addTransaction.path}
+          aria-label={addTransaction.label}
+          className={`mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-300 text-3xl leading-none text-zinc-950 transition-colors hover:bg-emerald-200 ${focusClass}`}
+        >
+          <span aria-hidden="true">+</span>
+        </NavLink>
         <NavLink to={analytics.path} className={mobileLinkClass}>
           {analytics.label}
         </NavLink>
@@ -108,7 +107,12 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness }: { snapshot?: OfflineSnapshot; offlineReadiness?: OfflineWorkerStatus }) {
+function ShellLayout({ snapshot, offlineReadiness, syncFailed, retryTransactions }: {
+  snapshot?: OfflineSnapshot
+  offlineReadiness?: OfflineWorkerStatus
+  syncFailed: boolean
+  retryTransactions: () => Promise<void>
+}) {
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100 md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
       <DesktopNavigation />
@@ -122,13 +126,19 @@ function ShellLayout({ snapshot, offlineReadiness }: { snapshot?: OfflineSnapsho
           )}
           {snapshot && (
             <p role="status" className="mb-4 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Для внесення змін потрібен інтернет.
+              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Нові доходи й витрати збережуться на цьому пристрої.
             </p>
+          )}
+          {!snapshot && syncFailed && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300/30 bg-zinc-900 px-3 py-2 text-sm text-amber-200">
+              <p role="status">Деякі транзакції залишилися на цьому пристрої після помилки синхронізації.</p>
+              <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retryTransactions()}>Повторити</button>
+            </div>
           )}
           <Outlet />
         </main>
       </div>
-      <MobileNavigation readOnly={!!snapshot} />
+      <MobileNavigation />
     </div>
   )
 }
@@ -179,13 +189,17 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot, offlineReadiness }: OfflinePageProps & { offlineReadiness?: OfflineWorkerStatus }) {
+export default function AppShell({ client, snapshot, offlineReadiness, pendingTransactions, queueTransaction, retryTransactions }: OfflinePageProps & {
+  offlineReadiness?: OfflineWorkerStatus
+  queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
+  retryTransactions: () => Promise<void>
+}) {
   const readOnly = !!snapshot
-  const pageProps = { client, snapshot }
+  const pageProps = { client, snapshot, pendingTransactions }
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} />}>
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={pendingTransactions?.some(({ syncState }) => syncState === 'failed') ?? false} retryTransactions={retryTransactions} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -193,7 +207,6 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
               element={
                 <SectionPage
                   title={label}
-                  showQuickAdd={!readOnly}
                   action={path === transactions.path && (readOnly ? [planned] : [planned, transfer, monobank]).map(({ path, label }) => (
                     <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
                       {label}
@@ -227,7 +240,7 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path={addTransaction.path}
             element={
               <SectionPage title={addTransaction.label} showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} /></OnlineAction>
+                <TransactionEditorPage {...pageProps} queueTransaction={queueTransaction} />
               </SectionPage>
             }
           />
@@ -235,7 +248,7 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path="/transactions/:transactionId/edit"
             element={
               <SectionPage title="Редагувати транзакцію" showQuickAdd={!readOnly}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -243,7 +256,7 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path="/transactions/:transactionId/confirm"
             element={
               <SectionPage title="Підтвердити транзакцію" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming pendingTransactions={pendingTransactions} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -251,7 +264,7 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path={transfer.path}
             element={
               <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
-                <OnlineAction readOnly={readOnly}><TransferPage client={client} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><TransferPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -283,7 +296,7 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path={`${recurringPath}/new`}
             element={
               <SectionPage title="Додати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -291,14 +304,14 @@ export default function AppShell({ client, snapshot, offlineReadiness }: Offline
             path={`${recurringPath}/:templateId/edit`}
             element={
               <SectionPage title="Редагувати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
               </SectionPage>
             }
           />
           <Route
             path={more.path}
             element={
-              <SectionPage title={more.label} showQuickAdd={!readOnly}>
+              <SectionPage title={more.label}>
                 <nav aria-label="Додаткові розділи" className="mt-6 grid max-w-sm gap-1 rounded-2xl border border-zinc-800 bg-zinc-900 p-2">
                   {additionalSections.map(({ path, label }) => (
                     <NavLink key={path} to={path} className={sidebarLinkClass}>

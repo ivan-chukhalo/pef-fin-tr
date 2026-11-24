@@ -14,9 +14,9 @@ type MonthSummary = {
   expensesByCategory: Map<string, CategoryExpenses>
 }
 
-export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
+export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly Transaction[]) {
   const [transactions, categories] = await Promise.all([
-    loadTransactions(client, signal, 'confirmed', snapshot),
+    loadTransactions(client, signal, 'confirmed', snapshot, pending),
     loadCategories(client, signal, snapshot),
   ])
   const months = new Map<string, MonthSummary>()

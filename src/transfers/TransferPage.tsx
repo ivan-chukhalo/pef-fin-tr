@@ -1,4 +1,3 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import AccountPicker, { type AccountOption } from '../accounts/AccountPicker'
@@ -8,6 +7,7 @@ import { formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, type OperationStatus } from '../lib/operations'
 import { useLoadData } from '../lib/useLoadData'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { saveTransfer, type TransferFields, type TransferReceipt } from './data'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
@@ -103,7 +103,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
   )
 }
 
-export default function TransferPage({ client }: { client: SupabaseClient }) {
+export default function TransferPage({ client, pendingTransactions }: OfflinePageProps) {
   const [params] = useSearchParams()
   const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
@@ -111,7 +111,7 @@ export default function TransferPage({ client }: { client: SupabaseClient }) {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal), [client])
+  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, undefined, pendingTransactions), [client, pendingTransactions])
   const { data: overview, setData: setOverview, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransferFields) {

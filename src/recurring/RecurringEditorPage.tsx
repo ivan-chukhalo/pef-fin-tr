@@ -1,14 +1,14 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
 import { useLoadData } from '../lib/useLoadData'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { loadLastUsdRate } from '../transactions/data'
 import TransactionForm from '../transactions/TransactionForm'
 import { loadRecurringTemplate, recurringPath, saveRecurringTemplate, type RecurringTemplateFields } from './data'
 
-function RecurringEditor({ client, templateId }: { client: SupabaseClient; templateId?: string }) {
+function RecurringEditor({ client, templateId, pendingTransactions }: OfflinePageProps & { templateId?: string }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => templateId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -18,13 +18,13 @@ function RecurringEditor({ client, templateId }: { client: SupabaseClient; templ
     const [accountData, categories, recurringTemplate, lastUsdRate] = await Promise.all([
       templateId
         ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
-        : loadAccountOverview(client, signal),
+        : loadAccountOverview(client, signal, undefined, pendingTransactions),
       loadCategories(client, signal),
       templateId ? loadRecurringTemplate(client, templateId, signal) : null,
-      loadLastUsdRate(client, signal),
+      loadLastUsdRate(client, signal, undefined, pendingTransactions),
     ])
     return { ...accountData, categories, recurringTemplate, lastUsdRate }
-  }, [client, templateId])
+  }, [client, templateId, pendingTransactions])
   const { data, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: RecurringTemplateFields) {
@@ -72,7 +72,7 @@ function RecurringEditor({ client, templateId }: { client: SupabaseClient; templ
   )
 }
 
-export default function RecurringEditorPage({ client }: { client: SupabaseClient }) {
+export default function RecurringEditorPage({ client, pendingTransactions }: OfflinePageProps) {
   const { templateId } = useParams()
-  return <RecurringEditor key={templateId ?? 'new'} client={client} templateId={templateId} />
+  return <RecurringEditor key={templateId ?? 'new'} client={client} pendingTransactions={pendingTransactions} templateId={templateId} />
 }

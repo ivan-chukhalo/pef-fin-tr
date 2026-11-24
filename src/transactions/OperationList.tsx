@@ -92,7 +92,7 @@ export default function OperationList({
   const accountName = (id: string) => accountNames.get(id) ?? 'Рахунок'
   const operations = [
     ...transactions.map((transaction) => {
-      const { title, categoryLabel, typeLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
+      const { title, categoryLabel, typeLabel, syncLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
       const income = transaction.type === 'income'
       return {
         key: `transaction-${transaction.id}`,
@@ -101,6 +101,7 @@ export default function OperationList({
         title,
         categoryLabel,
         typeLabel,
+        syncLabel,
         details: accountName(transaction.account_id),
         amount: BigInt(transaction.amount_uah_kop) * (income ? 1n : -1n),
         comment: transaction.comment,
@@ -114,6 +115,7 @@ export default function OperationList({
       title: 'Переказ',
       categoryLabel: null,
       typeLabel: null,
+      syncLabel: null,
       details: `${accountName(transfer.from_account_id)} → ${accountName(transfer.to_account_id)}`,
       amount: BigInt(transfer.amount_uah_kop),
       comment: transfer.comment,
@@ -135,7 +137,7 @@ export default function OperationList({
 
   return (
     <ol aria-label={label} className="grid gap-3">
-      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, details, amount, comment, plannedTransactionId }) => (
+      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, syncLabel, details, amount, comment, plannedTransactionId }) => (
         <li key={key} className="grid min-w-0 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:p-5">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <Heading className="font-semibold">{title}</Heading>
@@ -145,7 +147,7 @@ export default function OperationList({
               <span>{details}</span>
               <time dateTime={date}>{formatDate(date)}</time>
               {isOverdueOperation({ status, date }, today) ? <span className="text-amber-200">Прострочено</span> : (
-                showStatus && <span>{status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>
+                syncLabel || (showStatus && <span>{status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>)
               )}
             </div>
             {comment && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{comment}</p>}

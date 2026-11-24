@@ -3,7 +3,7 @@ import type { Account } from '../accounts/data'
 import type { Category } from '../categories/data'
 import type { RecurringTemplate } from '../recurring/data'
 import { isBackup, summaryKeys } from '../settings/backup'
-import type { Transaction } from '../transactions/data'
+import type { Transaction, TransactionFields } from '../transactions/data'
 import type { Transfer } from '../transfers/data'
 
 export type OfflineSnapshot = {
@@ -16,7 +16,25 @@ export type OfflineSnapshot = {
   category_history: { id: string; state: 'used' | 'deleted' }[]
 }
 
-export type OfflinePageProps = { client: SupabaseClient; snapshot?: OfflineSnapshot }
+export type OfflinePageProps = {
+  client: SupabaseClient
+  snapshot?: OfflineSnapshot
+  pendingTransactions?: readonly Transaction[]
+}
+
+export type QueuedTransaction = {
+  id: string
+  fields: TransactionFields
+  createdAt: string
+  amountUah: string
+  delivery?: 'sent' | 'failed'
+}
+
+export function mergePendingTransactions<Row extends { id: string }>(rows: Row[], pending: readonly Row[]) {
+  if (!pending.length) return rows
+  const ids = new Set(rows.map(({ id }) => id))
+  return [...rows, ...pending.filter(({ id }) => !ids.has(id))]
+}
 
 export async function downloadSnapshot(client: SupabaseClient, userId: string, signal: AbortSignal): Promise<OfflineSnapshot> {
   // The authenticated backup RPC reads every table in one database snapshot.
@@ -28,7 +46,9 @@ export async function downloadSnapshot(client: SupabaseClient, userId: string, s
   return data as unknown as OfflineSnapshot
 }
 
-type StoredSnapshot = { key: string; snapshot: OfflineSnapshot }
+type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; revision: number }
+type StoredSnapshot = { key: string; snapshot: OfflineSnapshot | null }
+type StoredQueue = { key: string } & Pick<LocalFinance, 'queue' | 'revision'>
 
 async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<Result>) {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -49,24 +69,44 @@ async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (s
   }
 }
 
-export async function readSnapshot(key: string): Promise<OfflineSnapshot | null> {
-  const row: StoredSnapshot | undefined = await withSnapshotStore('readonly', (store) => store.get(key))
-  return row?.snapshot ?? null
-}
-
-export async function saveSnapshot(key: string, snapshot: OfflineSnapshot, signal: AbortSignal) {
-  await withSnapshotStore('readwrite', (store) => {
-    const request = store.get(key)
-    request.onsuccess = () => {
-      const current: StoredSnapshot | undefined = request.result
-      if (!signal.aborted && (!current || Date.parse(current.snapshot.exported_at) <= Date.parse(snapshot.exported_at))) {
-        store.put({ key, snapshot } satisfies StoredSnapshot)
+async function accessLocalFinance(key: string, change?: (current: LocalFinance) => LocalFinance, signal?: AbortSignal) {
+  // An older open PWA may still replace its snapshot record. Keep the queue at a separate key.
+  const queueKey = `${key}:queue`
+  let result: LocalFinance = { snapshot: null, queue: [], revision: 0 }
+  let failure: unknown
+  await withSnapshotStore(change ? 'readwrite' : 'readonly', (store) => {
+    const snapshotRequest = store.get(key)
+    const queueRequest = store.get(queueKey)
+    queueRequest.onsuccess = () => {
+      const storedSnapshot: StoredSnapshot | undefined = snapshotRequest.result
+      const storedQueue: StoredQueue | undefined = queueRequest.result
+      const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], revision: storedQueue?.revision ?? 0 }
+      result = current
+      if (!change || signal?.aborted) return
+      try {
+        const next = change(current)
+        if (next === current) return
+        result = { ...next, revision: current.revision + 1 }
+        if (next.snapshot !== current.snapshot) store.put({ key, snapshot: next.snapshot } satisfies StoredSnapshot)
+        store.put({ key: queueKey, queue: next.queue, revision: result.revision } satisfies StoredQueue)
+      } catch (error) {
+        failure = error
+        store.transaction.abort()
       }
     }
-    return request
-  })
+    return queueRequest
+  }).catch((error) => { throw failure ?? error })
+  return result
+}
+
+export function readLocalFinance(key: string): Promise<LocalFinance> {
+  return accessLocalFinance(key)
+}
+
+export function changeLocalFinance(key: string, change: (current: LocalFinance) => LocalFinance, signal?: AbortSignal) {
+  return accessLocalFinance(key, change, signal)
 }
 
 export function removeSnapshot(key: string) {
-  return withSnapshotStore('readwrite', (store) => store.delete(key))
+  return changeLocalFinance(key, (current) => ({ ...current, snapshot: null }))
 }

@@ -9,9 +9,9 @@ import { getTransactionLabels } from '../transactions/labels'
 import { getComparisonMonths, loadAnalytics } from './data'
 import MonthlyComparison from './MonthlyComparison'
 
-export default function AnalyticsPage({ client, snapshot }: OfflinePageProps) {
+export default function AnalyticsPage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const load = useCallback((signal: AbortSignal) => loadAnalytics(client, signal, snapshot), [client, snapshot])
+  const load = useCallback((signal: AbortSignal) => loadAnalytics(client, signal, snapshot, pendingTransactions), [client, snapshot, pendingTransactions])
   const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {

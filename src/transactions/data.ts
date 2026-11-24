@@ -3,7 +3,7 @@ import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
 import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
-import type { OfflineSnapshot } from '../offline/snapshot'
+import { mergePendingTransactions, type OfflineSnapshot, type QueuedTransaction } from '../offline/snapshot'
 
 export type Currency = 'UAH' | 'USD'
 
@@ -24,13 +24,15 @@ export type Transaction = TransactionFields & {
   id: string
   amount_uah_kop: string
   created_at: string
+  syncState?: 'pending' | 'failed'
 }
 
 const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
 
-export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot): Promise<Transaction[]> {
-  if (snapshot) return Promise.resolve(snapshot.transactions.filter((row) => status === 'all' || row.status === status))
-  return readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
+export async function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, pending: readonly Transaction[] = []): Promise<Transaction[]> {
+  const rows = snapshot ? snapshot.transactions.filter((row) => status === 'all' || row.status === status)
+    : await readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
+  return status === 'planned' ? rows : mergePendingTransactions(rows, pending)
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
@@ -41,10 +43,10 @@ export async function loadTransactionOptions(client: SupabaseClient, signal: Abo
   return { accounts, categories }
 }
 
-export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
+export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly Transaction[]) {
   const [options, transactions] = await Promise.all([
     loadTransactionOptions(client, signal, snapshot),
-    loadTransactions(client, signal, 'confirmed', snapshot),
+    loadTransactions(client, signal, 'confirmed', snapshot, pending),
   ])
 
   transactions.sort((first, second) =>
@@ -68,9 +70,13 @@ export async function loadTransaction(client: SupabaseClient, id: string, signal
   return data
 }
 
-export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSignal): Promise<string> {
+export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending: readonly Transaction[] = []): Promise<string> {
+  if (snapshot) {
+    const rows = await loadTransactions(client, signal, 'confirmed', snapshot, pending)
+    return latestUsd(rows)
+  }
   const { data, error } = await client.from('transactions')
-    .select('rate::text')
+    .select('id,currency,created_at,rate::text')
     .eq('currency', 'USD')
     .eq('status', 'confirmed')
     .order('created_at', { ascending: false })
@@ -78,9 +84,16 @@ export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSigna
     .limit(1)
     .abortSignal(signal)
     .maybeSingle()
-    .overrideTypes<{ rate: string }, { merge: false }>()
+    .overrideTypes<Pick<Transaction, 'id' | 'currency' | 'created_at' | 'rate'>, { merge: false }>()
   if (error) throw error
-  return data?.rate ?? ''
+  const rows = data ? [data] : []
+  return latestUsd(mergePendingTransactions(rows, pending))
+}
+
+function latestUsd(rows: readonly Pick<Transaction, 'id' | 'currency' | 'created_at' | 'rate'>[]) {
+  return rows.filter(({ currency }) => currency === 'USD').sort((first, second) =>
+    second.created_at.localeCompare(first.created_at) || second.id.localeCompare(first.id),
+  )[0]?.rate ?? ''
 }
 
 export async function saveTransaction(client: SupabaseClient, id: string, fields: TransactionFields, isNew: boolean) {
@@ -91,6 +104,16 @@ export async function saveTransaction(client: SupabaseClient, id: string, fields
 
   const { error } = await query.select('id').single()
   if (error) throw error
+}
+
+export async function uploadQueuedTransaction(client: SupabaseClient, userId: string, entry: QueuedTransaction, signal: AbortSignal): Promise<'sent' | 'failed' | 'waiting'> {
+  const { data, error } = await client.from('transactions')
+    .upsert({ ...entry.fields, id: entry.id, user_id: userId, created_at: entry.createdAt }, { onConflict: 'id', ignoreDuplicates: true })
+    .select('id').abortSignal(signal)
+  if (error) return error.code?.startsWith('23') || error.code === '22003' ? 'failed' : 'waiting'
+  if (data?.length) return 'sent'
+  // A previous attempt may have committed before its response was lost.
+  return await loadTransaction(client, entry.id, signal, 'all') ? 'sent' : 'waiting'
 }
 
 export async function deleteTransaction(client: SupabaseClient, id: string, status: OperationStatus = 'confirmed'): Promise<boolean> {

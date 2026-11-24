@@ -5,10 +5,10 @@ import type { OfflineSnapshot } from '../offline/snapshot'
 import { loadTransactionOptions, loadTransactions, type Transaction } from '../transactions/data'
 import { loadTransfers } from '../transfers/data'
 
-export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
+export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly Transaction[]) {
   const [options, transactions, transfers] = await Promise.all([
     loadTransactionOptions(client, signal, snapshot),
-    loadTransactions(client, signal, 'all', snapshot),
+    loadTransactions(client, signal, 'all', snapshot, pending),
     loadTransfers(client, signal, 'all', snapshot),
   ])
   return { ...options, transactions, transfers }

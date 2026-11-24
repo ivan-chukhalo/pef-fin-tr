@@ -11,14 +11,14 @@ import { getTransactionLabels } from '../transactions/labels'
 const cardClass = 'min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900'
 const linkClass = 'inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
-export default function HomePage({ client, snapshot }: OfflinePageProps) {
+export default function HomePage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
   const load = useCallback(async (signal: AbortSignal) => {
     const [history, transfers] = await Promise.all([
-      loadTransactionHistory(client, signal, snapshot),
+      loadTransactionHistory(client, signal, snapshot, pendingTransactions),
       loadTransferAmounts(client, signal, snapshot),
     ])
     return { ...history, changesByAccount: getAccountBalanceChanges(history.transactions, transfers) }
-  }, [client, snapshot])
+  }, [client, snapshot, pendingTransactions])
   const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {
@@ -93,7 +93,7 @@ export default function HomePage({ client, snapshot }: OfflinePageProps) {
             {recentTransactions.map((transaction) => {
               const income = transaction.type === 'income'
               const amount = BigInt(transaction.amount_uah_kop)
-              const { title, categoryLabel, typeLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
+              const { title, categoryLabel, typeLabel, syncLabel } = getTransactionLabels(transaction, categoriesById.get(transaction.category_id))
               return (
                 <li key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-start gap-3 px-4 py-3 sm:px-5">
                   <div className="min-w-0">
@@ -101,6 +101,7 @@ export default function HomePage({ client, snapshot }: OfflinePageProps) {
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
                       {categoryLabel}
                       <span>{typeLabel}</span>
+                      {syncLabel}
                       <span>{accountsById.get(transaction.account_id) ?? 'Рахунок'}</span>
                       <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
                     </div>

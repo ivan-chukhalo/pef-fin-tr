@@ -1,14 +1,17 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
 import type { OperationStatus } from '../lib/operations'
+import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { confirmTransaction, loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
-function TransactionEditor({ client, transactionId, initialStatus, confirming }: { client: SupabaseClient; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
+type QueueTransaction = (id: string, fields: TransactionFields) => Promise<void>
+
+function TransactionEditor({ client, snapshot, pendingTransactions, queueTransaction, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -18,13 +21,13 @@ function TransactionEditor({ client, transactionId, initialStatus, confirming }:
     const [accountData, categories, transaction, lastUsdRate] = await Promise.all([
       transactionId
         ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
-        : loadAccountOverview(client, signal),
-      loadCategories(client, signal),
+        : loadAccountOverview(client, signal, snapshot, pendingTransactions),
+      loadCategories(client, signal, snapshot),
       transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all') : null,
-      loadLastUsdRate(client, signal),
+      loadLastUsdRate(client, signal, snapshot, pendingTransactions),
     ])
     return { ...accountData, categories, transaction, lastUsdRate }
-  }, [client, transactionId, confirming])
+  }, [client, transactionId, confirming, snapshot, pendingTransactions])
   const { data, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransactionFields) {
@@ -36,7 +39,17 @@ function TransactionEditor({ client, transactionId, initialStatus, confirming }:
     try {
       let date = fields.date
       if (confirming) date = await confirmTransaction(client, draftId, fields)
-      else await saveTransaction(client, draftId, fields, !transactionId)
+      else if (!transactionId && fields.status === 'confirmed' && queueTransaction) {
+        if (snapshot || !navigator.onLine || !canReachSupabase()) await queueTransaction(draftId, fields)
+        else {
+          try {
+            await saveTransaction(client, draftId, fields, true)
+          } catch (error) {
+            if (navigator.onLine && canReachSupabase()) throw error
+            await queueTransaction(draftId, fields)
+          }
+        }
+      } else await saveTransaction(client, draftId, fields, !transactionId)
       const destination = fields.status === 'planned' ? '/transactions/planned' : `/transactions?month=${date.slice(0, 7)}`
       navigate(destination, { replace: true })
     } catch {
@@ -68,12 +81,12 @@ function TransactionEditor({ client, transactionId, initialStatus, confirming }:
   }
 
   const status = confirming ? 'confirmed' : data.transaction?.status ?? initialStatus
-  return <TransactionForm {...data} initialStatus={status} confirming={confirming} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransactionForm {...data} initialStatus={status} confirming={confirming} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
-export default function TransactionEditorPage({ client, confirming = false }: { client: SupabaseClient; confirming?: boolean }) {
+export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction }) {
   const { transactionId } = useParams()
   const [params] = useSearchParams()
   const initialStatus = !transactionId && params.get('plan') === '1' ? 'planned' : 'confirmed'
-  return <TransactionEditor key={confirming ? `confirm-${transactionId}` : transactionId ?? initialStatus} client={client} transactionId={transactionId} initialStatus={initialStatus} confirming={confirming} />
+  return <TransactionEditor key={confirming ? `confirm-${transactionId}` : transactionId ?? initialStatus} {...props} transactionId={transactionId} initialStatus={initialStatus} confirming={confirming} />
 }

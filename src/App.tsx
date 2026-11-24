@@ -5,7 +5,7 @@ import { useOfflineData } from './offline/useOfflineData'
 import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
-  const { online, userId, snapshot } = useOfflineData(supabase)
+  const { online, userId, snapshot, pendingTransactions, queueTransaction, retryTransactions } = useOfflineData(supabase)
   const worker = useOfflineWorker()
 
   if (supabase && userId && (online || snapshot)) {
@@ -14,6 +14,9 @@ function App() {
       key={userId}
       client={supabase}
       snapshot={online ? undefined : snapshot ?? undefined}
+      pendingTransactions={pendingTransactions}
+      queueTransaction={queueTransaction}
+      retryTransactions={retryTransactions}
       offlineReadiness={online && import.meta.env.PROD ? readiness : undefined}
     />
   }

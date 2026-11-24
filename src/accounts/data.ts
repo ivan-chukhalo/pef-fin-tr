@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
-import type { OfflineSnapshot } from '../offline/snapshot'
+import { mergePendingTransactions, type OfflineSnapshot } from '../offline/snapshot'
 
 export type AccountType = 'card' | 'cash'
 
@@ -75,6 +75,7 @@ export async function loadAccountOverview(
   client: SupabaseClient,
   signal: AbortSignal,
   snapshot?: OfflineSnapshot,
+  pending: readonly TransactionAmount[] = [],
 ): Promise<AccountOverview> {
   const [accounts, transactions, transfers] = await Promise.all([
     loadAccounts(client, signal, snapshot),
@@ -83,7 +84,7 @@ export async function loadAccountOverview(
     loadTransferAmounts(client, signal, snapshot),
   ])
 
-  return { accounts, changesByAccount: getAccountBalanceChanges(transactions, transfers) }
+  return { accounts, changesByAccount: getAccountBalanceChanges(mergePendingTransactions(transactions, pending), transfers) }
 }
 
 export async function saveAccount(

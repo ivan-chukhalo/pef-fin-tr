@@ -32,6 +32,7 @@ type TransactionFormProps = {
   lastUsdRate: string
   isSaving: boolean
   saveError: boolean
+  offline?: boolean
 } & ({
   recurringTemplate?: never
   transaction: TransactionFields | null
@@ -70,6 +71,7 @@ export default function TransactionForm(props: TransactionFormProps) {
   const [rateInput, setRateInput] = useState((details?.currency === 'USD' ? details.rate : lastUsdRate).replace('.', ','))
   const [transactionName, setTransactionName] = useState(details?.purchase_name ?? '')
   const [errorMessage, setErrorMessage] = useState('')
+  const offlinePlanning = props.offline && status === 'planned'
 
   const availableCategories = getAvailableCategories(categories, type)
   const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === details?.account_id)
@@ -92,7 +94,7 @@ export default function TransactionForm(props: TransactionFormProps) {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSaving) return
+    if (isSaving || offlinePlanning) return
 
     const fields = new FormData(event.currentTarget)
     const date = String(fields.get('date') ?? '')
@@ -187,6 +189,7 @@ export default function TransactionForm(props: TransactionFormProps) {
             status={status}
             onStatusChange={setStatus}
             label={confirming ? 'Фактична дата' : 'Дата'}
+            planningAvailable={!props.offline}
           />
         )}
         <Field id="transaction-amount" label="Сума">
@@ -262,8 +265,9 @@ export default function TransactionForm(props: TransactionFormProps) {
           {errorMessage || `${saveErrorMessage} Спробуйте ще раз.`}
         </p>
       )}
+      {offlinePlanning && <p role="status" className="mt-4 text-sm text-zinc-300">Для запланованої операції потрібен інтернет.</p>}
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={isSaving} className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">
+        <button type="submit" disabled={isSaving || offlinePlanning} className="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">
           {isSaving ? 'Зберігаємо…' : submitLabel}
         </button>
         <Link to={cancelPath} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">

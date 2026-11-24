@@ -1,7 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { canReachSupabase, financeChanges, getRememberedUserId, snapshotKey, supabaseConnection } from '../lib/supabase'
-import { downloadSnapshot, readSnapshot, removeSnapshot, saveSnapshot, type OfflineSnapshot } from './snapshot'
+import { uploadQueuedTransaction, type Transaction, type TransactionFields } from '../transactions/data'
+import { convertToUah } from '../transactions/exchange'
+import { changeLocalFinance, downloadSnapshot, readLocalFinance, removeSnapshot } from './snapshot'
+
+type LocalFinance = Awaited<ReturnType<typeof readLocalFinance>>
+const noPendingTransactions: readonly Transaction[] = []
 
 function subscribeToConnection(notify: () => void) {
   window.addEventListener('online', notify)
@@ -21,9 +26,18 @@ function isOnline() {
 export function useOfflineData(client: SupabaseClient | null) {
   const online = useSyncExternalStore(subscribeToConnection, isOnline)
   const [sessionUser, setSessionUser] = useState<string | null | undefined>(undefined)
-  const [local, setLocal] = useState<{ key: string; snapshot: OfflineSnapshot | null } | null>(null)
+  const [local, setLocal] = useState<{ key: string; finance: LocalFinance } | null>(null)
   const userId = online ? sessionUser : getRememberedUserId()
   const key = userId ? snapshotKey(userId) : null
+  const finance = local?.key === key ? local.finance : undefined
+  const queue = finance?.queue
+  const pendingTransactions = useMemo<readonly Transaction[]>(() => queue?.length ? queue.map((entry) => ({
+    ...entry.fields,
+    id: entry.id,
+    created_at: entry.createdAt,
+    amount_uah_kop: entry.amountUah,
+    syncState: entry.delivery === 'failed' ? 'failed' : 'pending',
+  })) : noPendingTransactions, [queue])
 
   useEffect(() => {
     if (!client) return
@@ -73,32 +87,68 @@ export function useOfflineData(client: SupabaseClient | null) {
   useEffect(() => {
     if (!client || !userId || !key) return
     const lifetime = new AbortController()
-    let download: AbortController | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
+    let running = false
+    let requested = false
+    let hasPending = false
 
-    const update = (snapshot: OfflineSnapshot | null) => {
-      if (lifetime.signal.aborted) return
-      setLocal((current) => current?.key === key && current.snapshot &&
-        (!snapshot || Date.parse(current.snapshot.exported_at) > Date.parse(snapshot.exported_at))
-        ? current : { key, snapshot })
+    const { signal } = lifetime
+    const update = (finance: LocalFinance) => {
+      if (signal.aborted) return
+      hasPending = finance.queue.some(({ delivery }) => delivery !== 'failed')
+      setLocal((current) => current?.key === key && current.finance.revision >= finance.revision
+        ? current : { key, finance })
+    }
+
+    const syncAndRefresh = async () => {
+      let current = await readLocalFinance(key)
+      update(current)
+      for (const entry of current.queue) {
+        if (entry.delivery) continue
+        signal.throwIfAborted()
+        if (getRememberedUserId() !== userId) return
+        const result = await uploadQueuedTransaction(client, userId, entry, AbortSignal.any([signal, AbortSignal.timeout(12_000)]))
+        if (result === 'waiting') break
+        current = await changeLocalFinance(key, (state) => ({
+          ...state,
+          queue: state.queue.map((item) => item.id === entry.id && item.delivery !== 'sent'
+            ? { ...item, delivery: result } : item),
+        }), signal)
+        update(current)
+      }
+      signal.throwIfAborted()
+      const sentBeforeDownload = new Set(current.queue.filter(({ delivery }) => delivery === 'sent').map(({ id }) => id))
+      const snapshot = await downloadSnapshot(client, userId, AbortSignal.any([signal, AbortSignal.timeout(15_000)]))
+      signal.throwIfAborted()
+      if (getRememberedUserId() !== userId) return
+      const savedIds = new Set(snapshot.transactions.map(({ id }) => id))
+      update(await changeLocalFinance(key, (state) => {
+        if (state.snapshot && Date.parse(state.snapshot.exported_at) > Date.parse(snapshot.exported_at)) return state
+        return { ...state, snapshot, queue: state.queue.filter(({ id }) => !savedIds.has(id) && !sentBeforeDownload.has(id)) }
+      }, signal))
     }
 
     const refresh = () => {
-      download?.abort()
+      if (signal.aborted) return
+      if (running) {
+        requested = true
+        return
+      }
       if (timer !== undefined) clearTimeout(timer)
       timer = setTimeout(() => {
-        const request = new AbortController()
-        download = request
-        void downloadSnapshot(client, userId, request.signal).then(async (snapshot) => {
-          request.signal.throwIfAborted()
-          if (getRememberedUserId() !== userId) return
-          await saveSnapshot(key, snapshot, request.signal)
-          if (!request.signal.aborted) update(snapshot)
-        }).catch(() => {})
+        running = true
+        void syncAndRefresh().catch(() => {}).finally(() => {
+          running = false
+          if (requested) {
+            requested = false
+            refresh()
+          }
+        })
       }, 150)
     }
 
-    void readSnapshot(key).then(update, () => update(null))
+    void readLocalFinance(key).then(update, () => update({ snapshot: null, queue: [], revision: 0 }))
+    const retryTimer = online ? setInterval(() => { if (hasPending) refresh() }, 15_000) : undefined
     if (online) {
       refresh()
       financeChanges.addEventListener('change', refresh, { signal: lifetime.signal })
@@ -109,10 +159,39 @@ export function useOfflineData(client: SupabaseClient | null) {
     }
     return () => {
       lifetime.abort()
-      download?.abort()
       if (timer !== undefined) clearTimeout(timer)
+      if (retryTimer !== undefined) clearInterval(retryTimer)
     }
   }, [client, userId, key, online])
 
-  return { online, userId, snapshot: local && local.key === key ? local.snapshot : undefined }
+  async function queueTransaction(id: string, fields: TransactionFields) {
+    if (!key || getRememberedUserId() !== userId || fields.status !== 'confirmed') throw new Error('Offline save is unavailable')
+    const amountUah = convertToUah(BigInt(fields.amount_original_kop), fields.rate)
+    if (amountUah === null) throw new Error('Invalid amount')
+    const next = await changeLocalFinance(key, (current) => {
+      if (!current.snapshot || getRememberedUserId() !== userId) throw new Error('Offline save is unavailable')
+      if (current.queue.some((entry) => entry.id === id) || current.snapshot.transactions.some((row) => row.id === id)) return current
+      return { ...current, queue: [...current.queue, { id, fields, amountUah: amountUah.toString(), createdAt: new Date().toISOString() }] }
+    })
+    if (getRememberedUserId() !== userId) return
+    setLocal((current) => current?.key === key && current.finance.revision > next.revision ? current : { key, finance: next })
+    financeChanges.dispatchEvent(new Event('change'))
+  }
+
+  async function retryTransactions() {
+    if (!key || getRememberedUserId() !== userId) return
+    try {
+      const next = await changeLocalFinance(key, (state) => ({
+        ...state,
+        queue: state.queue.map((entry) => entry.delivery === 'failed' ? { ...entry, delivery: undefined } : entry),
+      }))
+      if (getRememberedUserId() !== userId) return
+      setLocal((current) => current?.key === key && current.finance.revision > next.revision ? current : { key, finance: next })
+      financeChanges.dispatchEvent(new Event('change'))
+    } catch {
+      // The entries stay in storage if resetting their delivery state fails.
+    }
+  }
+
+  return { online, userId, snapshot: finance?.snapshot, pendingTransactions, queueTransaction, retryTransactions }
 }
