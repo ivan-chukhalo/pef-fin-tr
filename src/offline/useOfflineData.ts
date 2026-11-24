@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { isDateOnOrBefore, todayInKyiv } from '../lib/dates'
 import { canReachSupabase, financeChanges, getRememberedUserId, snapshotKey, supabaseConnection } from '../lib/supabase'
 import { loadTransaction, sameTransactionFields, uploadQueuedChange, uploadQueuedTransaction, type Transaction, type TransactionFields } from '../transactions/data'
 import { convertToUah } from '../transactions/exchange'
-import { uploadQueuedTransfer, type QueueTransfer } from '../transfers/data'
+import { uploadQueuedTransfer, type QueueTransfer, type ResolveRejectedTransfer } from '../transfers/data'
 import { changeLocalFinance, downloadSnapshot, pendingTransaction, readLocalFinance, removeSnapshot, type QueuedChange, type TransactionOverlay } from './snapshot'
 
 type LocalFinance = Awaited<ReturnType<typeof readLocalFinance>>
@@ -147,11 +148,15 @@ export function useOfflineData(client: SupabaseClient | null) {
         if (entry.delivery) continue
         signal.throwIfAborted()
         if (getRememberedUserId() !== userId) return
-        const delivery = await uploadQueuedTransfer(client, userId, entry, AbortSignal.any([signal, AbortSignal.timeout(12_000)]))
-        if (delivery === 'waiting') break
+        const result = await uploadQueuedTransfer(client, userId, entry, AbortSignal.any([signal, AbortSignal.timeout(12_000)]))
+        if (result === 'waiting') break
         current = await changeLocalFinance(key, (state) => ({
           ...state,
-          transferQueue: state.transferQueue.map((item) => item.id === entry.id && item.delivery !== 'sent' ? { ...item, delivery } : item),
+          transferQueue: state.transferQueue.map((item) =>
+            item.id === entry.id && item.fields.date === entry.fields.date && item.delivery !== 'sent'
+              ? { ...item, delivery: result === 'sent' ? 'sent' : 'failed',
+                failure: result === 'sent' ? undefined : result === 'date' ? 'date' : 'other' }
+              : item),
         }), signal)
         update(current)
       }
@@ -233,6 +238,24 @@ export function useOfflineData(client: SupabaseClient | null) {
     rememberLocalChange(next)
   }
 
+  const resolveRejectedTransfer: ResolveRejectedTransfer = async (id, originalDate, date) => {
+    if (!key || getRememberedUserId() !== userId) throw new Error('Session changed')
+    const next = await changeLocalFinance(key, (current) => {
+      if (getRememberedUserId() !== userId) throw new Error('Session changed')
+      const entry = current.transferQueue.find((item) => item.id === id)
+      if (entry?.delivery !== 'failed' || entry.fields.date !== originalDate) {
+        throw new Error('The queued transfer changed')
+      }
+      if (date === null) return { ...current, transferQueue: current.transferQueue.filter((item) => item.id !== id) }
+      if (entry.failure === 'other' || !current.snapshot || !isDateOnOrBefore(date, todayInKyiv(new Date(current.snapshot.exported_at)))) {
+        throw new Error('Invalid transfer date')
+      }
+      return { ...current, transferQueue: current.transferQueue.map((item) => item.id === id
+        ? { ...item, fields: { ...item.fields, date }, delivery: undefined, failure: undefined } : item) }
+    })
+    rememberLocalChange(next)
+  }
+
   async function queueTransactionChange(original: Transaction, fields: TransactionFields | null) {
     if (!key || getRememberedUserId() !== userId || original.status !== 'confirmed' || (fields && fields.status !== 'confirmed')) {
       throw new Error('Offline change is unavailable')
@@ -290,7 +313,8 @@ export function useOfflineData(client: SupabaseClient | null) {
         ...state,
         queue: state.queue.map((entry) => entry.delivery === 'failed' ? { ...entry, delivery: undefined } : entry),
         changes: state.changes.map((entry) => entry.delivery === 'failed' ? { ...entry, delivery: undefined } : entry),
-        transferQueue: state.transferQueue.map((entry) => entry.delivery === 'failed' ? { ...entry, delivery: undefined } : entry),
+        transferQueue: state.transferQueue.map((entry) => entry.delivery === 'failed' && entry.failure === 'other'
+          ? { ...entry, delivery: undefined } : entry),
       }))
       rememberLocalChange(next)
     } catch {
@@ -299,5 +323,5 @@ export function useOfflineData(client: SupabaseClient | null) {
   }
 
   return { online, userId, snapshot: finance?.snapshot, transactionOverlay, pendingTransfers,
-    queueTransaction, queueTransfer, queueTransactionChange, resolveTransactionConflict, retrySync }
+    queueTransaction, queueTransfer, resolveRejectedTransfer, queueTransactionChange, resolveTransactionConflict, retrySync }
 }

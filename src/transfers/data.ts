@@ -13,8 +13,14 @@ export type TransferFields = {
 }
 
 export type Transfer = TransferFields & { id: string; syncState?: 'pending' | 'failed' }
-export type QueuedTransfer = { id: string; fields: TransferFields; delivery?: 'sent' | 'failed' }
+export type QueuedTransfer = {
+  id: string
+  fields: TransferFields
+  delivery?: 'sent' | 'failed'
+  failure?: 'date' | 'other'
+}
 export type QueueTransfer = (id: string, fields: TransferFields) => Promise<void>
+export type ResolveRejectedTransfer = (id: string, originalDate: string, date: string | null) => Promise<void>
 
 export type TransferReceipt = {
   transfer: Transfer
@@ -63,12 +69,14 @@ export async function saveTransfer(client: SupabaseClient, id: string, fields: T
   return { transfer: previous, savedEarlierWithDifferentDetails }
 }
 
-export async function uploadQueuedTransfer(client: SupabaseClient, userId: string, entry: QueuedTransfer, signal: AbortSignal): Promise<'sent' | 'failed' | 'waiting'> {
+export async function uploadQueuedTransfer(client: SupabaseClient, userId: string, entry: QueuedTransfer, signal: AbortSignal): Promise<'sent' | 'failed' | 'date' | 'waiting'> {
   try {
     await saveTransfer(client, entry.id, entry.fields, { userId, signal })
     return 'sent'
   } catch (error) {
     const code = error && typeof error === 'object' && 'code' in error ? error.code : null
+    if (code === '23514' && error && typeof error === 'object' && 'message' in error
+      && typeof error.message === 'string' && error.message.includes('transfers_confirmed_date_not_future')) return 'date'
     return typeof code === 'string' && (code.startsWith('23') || code === '22003') ? 'failed' : 'waiting'
   }
 }

@@ -1,12 +1,13 @@
 import AppShell from './AppShell'
 import LoginForm from './LoginForm'
+import { todayInKyiv } from './lib/dates'
 import { supabase } from './lib/supabase'
 import { useOfflineData } from './offline/useOfflineData'
 import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
   const { online, userId, snapshot, transactionOverlay, pendingTransfers,
-    queueTransaction, queueTransfer, queueTransactionChange, resolveTransactionConflict, retrySync } = useOfflineData(supabase)
+    queueTransaction, queueTransfer, resolveRejectedTransfer, queueTransactionChange, resolveTransactionConflict, retrySync } = useOfflineData(supabase)
   const worker = useOfflineWorker()
 
   if (supabase && userId && (online || snapshot)) {
@@ -19,6 +20,8 @@ function App() {
       pendingTransfers={pendingTransfers}
       queueTransaction={queueTransaction}
       queueTransfer={queueTransfer}
+      resolveRejectedTransfer={resolveRejectedTransfer}
+      lastServerDate={snapshot ? todayInKyiv(new Date(snapshot.exported_at)) : undefined}
       queueTransactionChange={queueTransactionChange}
       resolveTransactionConflict={resolveTransactionConflict}
       retrySync={retrySync}

@@ -9,7 +9,8 @@ import { getOperationDateError, type OperationStatus } from '../lib/operations'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
-import { saveTransfer, type QueueTransfer, type TransferFields, type TransferReceipt } from './data'
+import { saveTransfer, type QueueTransfer, type ResolveRejectedTransfer, type TransferFields, type TransferReceipt } from './data'
+import RejectedTransfers from './RejectedTransfers'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const secondaryActionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
@@ -107,7 +108,12 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
   )
 }
 
-export default function TransferPage({ client, snapshot, transactionOverlay, pendingTransfers, queueTransfer }: OfflinePageProps & { queueTransfer: QueueTransfer }) {
+export default function TransferPage({ client, snapshot, transactionOverlay, pendingTransfers, queueTransfer,
+  resolveRejectedTransfer, lastServerDate }: OfflinePageProps & {
+  queueTransfer: QueueTransfer
+  resolveRejectedTransfer: ResolveRejectedTransfer
+  lastServerDate?: string
+}) {
   const [params] = useSearchParams()
   const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
@@ -154,6 +160,10 @@ export default function TransferPage({ client, snapshot, transactionOverlay, pen
   }
 
   const { accounts, changesByAccount } = overview
+
+  if (params.get('rejected') === '1') {
+    return <RejectedTransfers accounts={accounts} pendingTransfers={pendingTransfers} lastServerDate={lastServerDate} onResolve={resolveRejectedTransfer} />
+  }
 
   if (receipt) {
     const { transfer, savedEarlierWithDifferentDetails } = receipt

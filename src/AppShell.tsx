@@ -8,7 +8,7 @@ import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 import type { TransactionFields } from './transactions/data'
 import type { QueueTransactionChange } from './transactions/TransactionEditorPage'
-import type { QueueTransfer } from './transfers/data'
+import type { QueueTransfer, ResolveRejectedTransfer } from './transfers/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -109,10 +109,11 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, retrySync }: {
+function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfers, hasConflicts, retrySync }: {
   snapshot?: OfflineSnapshot
   offlineReadiness?: OfflineWorkerStatus
-  syncFailed: boolean
+  canRetry: boolean
+  hasRejectedTransfers: boolean
   hasConflicts: boolean
   retrySync: () => Promise<void>
 }) {
@@ -138,10 +139,13 @@ function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, ret
               <Link to={transactions.path} className={`rounded underline underline-offset-2 ${focusClass}`}>Порівняти версії</Link>
             </p>
           )}
-          {!snapshot && syncFailed && (
+          {!snapshot && (canRetry || hasRejectedTransfers) && (
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300/30 bg-zinc-900 px-3 py-2 text-sm text-amber-200">
               <p role="status">Деякі операції залишилися на цьому пристрої після помилки синхронізації.</p>
-              <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retrySync()}>Повторити</button>
+              {hasRejectedTransfers && (
+                <Link to={`${transfer.path}?rejected=1`} className={`rounded underline underline-offset-2 ${focusClass}`}>Переглянути відхилені перекази</Link>
+              )}
+              {canRetry && <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retrySync()}>Повторити</button>}
             </div>
           )}
           <Outlet />
@@ -199,24 +203,28 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
 }
 
 export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers,
-  queueTransaction, queueTransfer, queueTransactionChange, resolveTransactionConflict, retrySync }: OfflinePageProps & {
+  queueTransaction, queueTransfer, resolveRejectedTransfer, lastServerDate, queueTransactionChange, resolveTransactionConflict, retrySync }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
   queueTransfer: QueueTransfer
+  resolveRejectedTransfer: ResolveRejectedTransfer
+  lastServerDate?: string
   queueTransactionChange: QueueTransactionChange
   resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
   retrySync: () => Promise<void>
 }) {
   const readOnly = !!snapshot
   const pageProps = { client, snapshot, transactionOverlay, pendingTransfers }
-  const syncFailed = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed')
+  const canRetry = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed')
     || transactionOverlay?.changes.some(({ delivery }) => delivery === 'failed')
-    || pendingTransfers?.some(({ delivery }) => delivery === 'failed'))
+    || pendingTransfers?.some(({ delivery, failure }) => delivery === 'failed' && failure === 'other'))
   const hasConflicts = transactionOverlay?.changes.some(({ conflict }) => !!conflict) ?? false
+  const hasRejectedTransfers = pendingTransfers?.some(({ delivery }) => delivery === 'failed') ?? false
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={syncFailed} hasConflicts={hasConflicts} retrySync={retrySync} />}>
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} canRetry={canRetry}
+          hasRejectedTransfers={hasRejectedTransfers} hasConflicts={hasConflicts} retrySync={retrySync} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -286,7 +294,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={transfer.path}
             element={
               <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
-                <TransferPage {...pageProps} queueTransfer={queueTransfer} />
+                <TransferPage {...pageProps} queueTransfer={queueTransfer} resolveRejectedTransfer={resolveRejectedTransfer} lastServerDate={lastServerDate} />
               </SectionPage>
             }
           />
