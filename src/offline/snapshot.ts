@@ -5,7 +5,7 @@ import type { OperationStatusFilter } from '../lib/operations'
 import type { RecurringTemplate } from '../recurring/data'
 import { isBackup, summaryKeys } from '../settings/backup'
 import type { Transaction, TransactionFields } from '../transactions/data'
-import type { QueuedTransfer, Transfer } from '../transfers/data'
+import type { QueuedTransfer, QueuedTransferChange, Transfer } from '../transfers/data'
 
 export type OfflineSnapshot = {
   exported_at: string
@@ -22,6 +22,8 @@ export type OfflinePageProps = {
   snapshot?: OfflineSnapshot
   transactionOverlay?: TransactionOverlay
   pendingTransfers?: readonly QueuedTransfer[]
+  transferChanges?: readonly QueuedTransferChange[]
+  lastServerDate?: string
 }
 
 export type QueuedTransaction = {
@@ -55,8 +57,8 @@ export function isRejectedConfirmation(change: QueuedChange): boolean {
   return change.delivery === 'failed' && isTransactionConfirmation(change)
 }
 
-export function canApplyTransactionChange(next: Transaction | null, remote: Transaction | null | undefined): boolean {
-  return next?.status !== 'planned' || remote?.status !== 'confirmed'
+export function canApplyTransactionChange({ original, next }: Pick<QueuedChange, 'original' | 'next'>, remote: Transaction | null | undefined): boolean {
+  return (next ?? original).status !== 'planned' || remote?.status !== 'confirmed'
 }
 
 export function pendingTransaction(entry: QueuedTransaction): Transaction {
@@ -66,7 +68,7 @@ export function pendingTransaction(entry: QueuedTransaction): Transaction {
 
 export function projectedChange(change: QueuedChange): Transaction | null {
   const remote = change.conflict?.remote
-  if (remote && !canApplyTransactionChange(change.next, remote)) return { ...remote, syncState: 'conflict' }
+  if (remote && !canApplyTransactionChange(change, remote)) return { ...remote, syncState: 'conflict' }
   return change.next && { ...change.next, syncState: change.conflict ? 'conflict'
     : change.delivery === 'failed' ? 'failed' : 'pending' }
 }
@@ -95,11 +97,19 @@ export async function downloadSnapshot(client: SupabaseClient, userId: string, s
   return data as unknown as OfflineSnapshot
 }
 
-type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; changes: QueuedChange[]; transferQueue: QueuedTransfer[]; revision: number }
+type LocalFinance = {
+  snapshot: OfflineSnapshot | null
+  queue: QueuedTransaction[]
+  changes: QueuedChange[]
+  transferQueue: QueuedTransfer[]
+  transferChanges: QueuedTransferChange[]
+  revision: number
+}
 type StoredSnapshot = { key: string; snapshot: OfflineSnapshot | null }
 type StoredQueue = { key: string } & Pick<LocalFinance, 'queue' | 'revision'>
 type StoredChanges = { key: string; changes: QueuedChange[] }
 type StoredTransfers = { key: string; transferQueue: QueuedTransfer[] }
+type StoredTransferChanges = { key: string; transferChanges: QueuedTransferChange[] }
 
 async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<Result>) {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -125,20 +135,23 @@ async function accessLocalFinance(key: string, change?: (current: LocalFinance) 
   const queueKey = `${key}:queue`
   const changesKey = `${key}:changes`
   const transfersKey = `${key}:transfers`
-  let result: LocalFinance = { snapshot: null, queue: [], changes: [], transferQueue: [], revision: 0 }
+  const transferChangesKey = `${key}:transfer-changes`
+  let result: LocalFinance = { snapshot: null, queue: [], changes: [], transferQueue: [], transferChanges: [], revision: 0 }
   let failure: unknown
   await withSnapshotStore(change ? 'readwrite' : 'readonly', (store) => {
     const snapshotRequest = store.get(key)
     const queueRequest = store.get(queueKey)
     const changesRequest = store.get(changesKey)
     const transfersRequest = store.get(transfersKey)
-    transfersRequest.onsuccess = () => {
+    const transferChangesRequest = store.get(transferChangesKey)
+    transferChangesRequest.onsuccess = () => {
       const storedSnapshot: StoredSnapshot | undefined = snapshotRequest.result
       const storedQueue: StoredQueue | undefined = queueRequest.result
       const storedChanges: StoredChanges | undefined = changesRequest.result
       const storedTransfers: StoredTransfers | undefined = transfersRequest.result
+      const storedTransferChanges: StoredTransferChanges | undefined = transferChangesRequest.result
       const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], changes: storedChanges?.changes ?? [],
-        transferQueue: storedTransfers?.transferQueue ?? [], revision: storedQueue?.revision ?? 0 }
+        transferQueue: storedTransfers?.transferQueue ?? [], transferChanges: storedTransferChanges?.transferChanges ?? [], revision: storedQueue?.revision ?? 0 }
       result = current
       if (!change || signal?.aborted) return
       try {
@@ -149,12 +162,13 @@ async function accessLocalFinance(key: string, change?: (current: LocalFinance) 
         store.put({ key: queueKey, queue: next.queue, revision: result.revision } satisfies StoredQueue)
         if (next.changes !== current.changes) store.put({ key: changesKey, changes: next.changes } satisfies StoredChanges)
         if (next.transferQueue !== current.transferQueue) store.put({ key: transfersKey, transferQueue: next.transferQueue } satisfies StoredTransfers)
+        if (next.transferChanges !== current.transferChanges) store.put({ key: transferChangesKey, transferChanges: next.transferChanges } satisfies StoredTransferChanges)
       } catch (error) {
         failure = error
         store.transaction.abort()
       }
     }
-    return transfersRequest
+    return transferChangesRequest
   }).catch((error) => { throw failure ?? error })
   return result
 }

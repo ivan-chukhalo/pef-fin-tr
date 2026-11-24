@@ -134,7 +134,7 @@ export async function uploadQueuedChange(client: SupabaseClient, userId: string,
 Promise<{ delivery: 'sent' | 'failed' | 'waiting' } | { delivery: 'conflict'; remote: Transaction | null }> {
   const remote = await loadTransaction(client, entry.id, signal, 'all')
   const { base, next } = entry
-  if (!canApplyTransactionChange(next, remote)) return { delivery: 'conflict', remote }
+  if (!canApplyTransactionChange(entry, remote)) return { delivery: 'conflict', remote }
   if (next ? remote && sameTransactionFields(next, remote) : !remote) return { delivery: 'sent' }
   const unchanged = base && remote ? (!base.updated_at || base.updated_at === remote.updated_at) && sameTransactionFields(base, remote) : !base && !remote
   if (!unchanged) return { delivery: 'conflict', remote }

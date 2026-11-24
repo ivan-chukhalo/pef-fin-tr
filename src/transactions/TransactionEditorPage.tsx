@@ -12,7 +12,7 @@ import TransactionForm from './TransactionForm'
 type QueueTransaction = (id: string, fields: TransactionFields) => Promise<void>
 export type QueueTransactionChange = (original: Transaction, fields: TransactionFields | null) => Promise<void>
 
-function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransfers, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
+function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransfers, lastServerDate, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -111,7 +111,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
   }
 
   const status = confirming ? 'confirmed' : (original ?? data.transaction)?.status ?? initialStatus
-  return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} lastServerDate={lastServerDate} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
 export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange }) {

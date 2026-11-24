@@ -1,8 +1,8 @@
 import DateInput from './DateInput'
 import { nextCalendarDate, todayInKyiv } from './dates'
-import type { OperationStatus } from './operations'
+import { getPlanningDate, type OperationStatus } from './operations'
 
-export default function OperationDateField({ id, fieldClass, existingDate, status, onStatusChange, label = 'Дата', planningAvailable = true }: {
+export default function OperationDateField({ id, fieldClass, existingDate, status, onStatusChange, label = 'Дата', planningAvailable = true, lastServerDate }: {
   id: string
   fieldClass: string
   existingDate?: string
@@ -10,9 +10,10 @@ export default function OperationDateField({ id, fieldClass, existingDate, statu
   onStatusChange: (status: OperationStatus) => void
   label?: string
   planningAvailable?: boolean
+  lastServerDate?: string
 }) {
   const today = todayInKyiv()
-  const tomorrow = nextCalendarDate(today)
+  const tomorrow = nextCalendarDate(getPlanningDate(lastServerDate))
   const planned = status === 'planned'
   const earliestPlannedDate = existingDate && existingDate < tomorrow ? existingDate : tomorrow
 
@@ -20,7 +21,7 @@ export default function OperationDateField({ id, fieldClass, existingDate, statu
     <div className="grid min-w-0 gap-2 text-sm font-medium">
       <label htmlFor={id}>{label}</label>
       <DateInput
-        key={status}
+        key={planned && !existingDate ? tomorrow : status}
         id={id}
         name="date"
         className={fieldClass}

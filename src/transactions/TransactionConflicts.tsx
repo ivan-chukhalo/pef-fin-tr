@@ -87,7 +87,7 @@ export default function TransactionConflicts({ changes, accounts, categories, on
             <TransactionVersion title="Збережено в Supabase" transaction={conflict?.remote ?? null} accounts={accounts} categories={categories} />
           </div>
           <div className="flex flex-wrap gap-2">
-            {canApplyTransactionChange(next, conflict?.remote) && (
+            {canApplyTransactionChange({ original, next }, conflict?.remote) && (
               <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, true)}>{next ? 'Застосувати мою версію' : 'Підтвердити видалення'}</button>
             )}
             <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, false)}>Залишити збережену версію</button>

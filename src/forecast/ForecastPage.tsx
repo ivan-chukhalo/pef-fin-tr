@@ -5,7 +5,9 @@ import DateInput from '../lib/DateInput'
 import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
-import OperationList, { type OperationSort, type TransactionActions } from '../transactions/OperationList'
+import OperationList, { type OperationSort } from '../transactions/OperationList'
+import type { QueueTransactionChange } from '../transactions/TransactionEditorPage'
+import type { QueueTransferChange } from '../transfers/data'
 import { getForecast, loadForecastData, type ForecastData } from './data'
 
 const sortOptions = [
@@ -14,11 +16,12 @@ const sortOptions = [
   { value: 'amount-desc', label: 'Від більших' },
 ] as const
 
-function ForecastResults({ data, today, date, transactionActions, sortBy, onSortChange }: {
+function ForecastResults({ data, today, date, queueTransactionChange, queueTransferChange, sortBy, onSortChange }: {
   data: ForecastData
   today: string
   date: string
-  transactionActions?: TransactionActions
+  queueTransactionChange: QueueTransactionChange
+  queueTransferChange: QueueTransferChange
   sortBy: OperationSort
   onSortChange: (sort: OperationSort) => void
 }) {
@@ -78,7 +81,8 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
           emptyMessage="За цей період операцій немає."
           sortBy={sortBy}
           showStatus
-          transactionActions={transactionActions}
+          onDeleteTransaction={(transaction) => queueTransactionChange(transaction, null)}
+          onDeleteTransfer={(transfer) => queueTransferChange(transfer, null)}
           headingTag="h3"
         />
       </section>
@@ -94,7 +98,8 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
             today={today}
             label="Прострочені операції"
             emptyMessage="Прострочених операцій немає."
-            transactionActions={transactionActions}
+            onDeleteTransaction={(transaction) => queueTransactionChange(transaction, null)}
+            onDeleteTransfer={(transfer) => queueTransferChange(transfer, null)}
             headingTag="h3"
           />
         </section>
@@ -103,20 +108,15 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
   )
 }
 
-export default function ForecastPage({ client, snapshot, transactionOverlay, pendingTransfers }: OfflinePageProps) {
+export default function ForecastPage({ client, snapshot, transactionOverlay, pendingTransfers, transferChanges, queueTransactionChange, queueTransferChange }: OfflinePageProps & {
+  queueTransactionChange: QueueTransactionChange
+  queueTransferChange: QueueTransferChange
+}) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<OperationSort>('date')
-  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal, snapshot, transactionOverlay, pendingTransfers),
-    [client, snapshot, transactionOverlay, pendingTransfers])
-  const { data, setData, hasError, retry } = useLoadData(load)
-  const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
-    setData((current) => current && {
-      ...current,
-      transactions: current.transactions.flatMap((transaction) =>
-        transaction.id !== id ? [transaction] : replacement ? [replacement] : [],
-      ),
-    })
-  }
+  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal, snapshot, transactionOverlay, pendingTransfers, transferChanges),
+    [client, snapshot, transactionOverlay, pendingTransfers, transferChanges])
+  const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {
     return hasError ? (
@@ -150,7 +150,8 @@ export default function ForecastPage({ client, snapshot, transactionOverlay, pen
           data={data}
           today={today}
           date={date}
-          transactionActions={snapshot ? undefined : { client, onChange: onTransactionChange }}
+          queueTransactionChange={queueTransactionChange}
+          queueTransferChange={queueTransferChange}
           sortBy={sortBy}
           onSortChange={setSortBy}
         />

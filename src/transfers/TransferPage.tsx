@@ -1,15 +1,16 @@
 import { useCallback, useRef, useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import AccountPicker, { type AccountOption } from '../accounts/AccountPicker'
 import { getAccountBalance, loadAccountOverview } from '../accounts/data'
 import { formatDate } from '../lib/dates'
-import { formatKopecks, parseHryvnias } from '../lib/money'
+import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, type OperationStatus } from '../lib/operations'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
-import { saveTransfer, type QueueTransfer, type ResolveRejectedTransfer, type TransferFields, type TransferReceipt } from './data'
+import { loadTransfer, saveTransfer, type QueueTransfer, type QueueTransferChange, type ResolveRejectedTransfer,
+  type Transfer, type TransferFields, type TransferReceipt } from './data'
 import RejectedTransfers from './RejectedTransfers'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
@@ -17,19 +18,21 @@ const secondaryActionClass = 'inline-flex min-h-11 items-center rounded-xl borde
 const primaryActionClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 const invalidAccountsMessage = 'Оберіть два різні рахунки.'
 
-function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, onSave }: {
+function TransferForm({ accounts, transfer, initialStatus, offline, isSaving, saveError, onSave, lastServerDate }: {
   accounts: AccountOption[]
+  transfer?: Transfer
   initialStatus: OperationStatus
   offline: boolean
   isSaving: boolean
   saveError: boolean
+  lastServerDate?: string
   onSave: (fields: TransferFields) => void
 }) {
-  const [fromAccountId, setFromAccountId] = useState('')
-  const [toAccountId, setToAccountId] = useState('')
+  const [fromAccountId, setFromAccountId] = useState(transfer?.from_account_id ?? '')
+  const [toAccountId, setToAccountId] = useState(transfer?.to_account_id ?? '')
   const [status, setStatus] = useState(initialStatus)
   const [errorMessage, setErrorMessage] = useState('')
-  const planningBlocked = offline && status === 'planned'
+  const planningBlocked = offline && status === 'planned' && !transfer
 
   function clearAccountSelectionError() {
     setErrorMessage((message) => message === invalidAccountsMessage ? '' : message)
@@ -43,7 +46,7 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
     const amount = parseHryvnias(String(fields.get('amount') ?? ''))
     const date = String(fields.get('date') ?? '')
 
-    const dateError = getOperationDateError(date, status)
+    const dateError = getOperationDateError(date, status, transfer?.date, lastServerDate)
     if (dateError) {
       setErrorMessage(dateError)
       return
@@ -75,9 +78,10 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
       <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
         <div className="grid min-w-0 gap-2 text-sm font-medium">
           <label htmlFor="transfer-amount">Сума, грн</label>
-          <input id="transfer-amount" name="amount" inputMode="decimal" className={fieldClass} autoFocus required />
+          <input id="transfer-amount" name="amount" inputMode="decimal" className={fieldClass}
+            defaultValue={transfer ? formatBalanceInput(BigInt(transfer.amount_uah_kop)) : undefined} autoFocus required />
         </div>
-        <OperationDateField id="transfer-date" fieldClass={fieldClass} status={status} onStatusChange={setStatus} planningAvailable={!offline} />
+        <OperationDateField id="transfer-date" fieldClass={fieldClass} status={status} onStatusChange={setStatus} existingDate={transfer?.date} planningAvailable={!offline} lastServerDate={lastServerDate} />
         <AccountPicker id="transfer-from" label="З рахунку" accounts={accounts} value={fromAccountId} onChange={(nextAccountId) => {
           setFromAccountId(nextAccountId)
           if (nextAccountId === toAccountId) setToAccountId('')
@@ -89,7 +93,7 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
         }} />
         <div className="grid min-w-0 gap-2 text-sm font-medium sm:col-span-2">
           <label htmlFor="transfer-comment">Коментар (необов’язково)</label>
-          <textarea id="transfer-comment" name="comment" rows={2} className={fieldClass} />
+          <textarea id="transfer-comment" name="comment" rows={2} className={fieldClass} defaultValue={transfer?.comment ?? ''} />
         </div>
       </fieldset>
       {planningBlocked && <p role="status" className="mt-4 text-sm text-zinc-300">Для планування переказу потрібен інтернет.</p>}
@@ -100,7 +104,7 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
       )}
       <div className="mt-6 flex flex-wrap gap-3">
         <button type="submit" disabled={isSaving || planningBlocked} className={primaryActionClass}>
-          {isSaving ? 'Зберігаємо…' : status === 'planned' ? 'Запланувати' : 'Зберегти переказ'}
+          {isSaving ? 'Зберігаємо…' : transfer ? 'Зберегти зміни' : status === 'planned' ? 'Запланувати' : 'Зберегти переказ'}
         </button>
         <Link to={status === 'planned' ? '/transactions/planned' : '/transactions'} className={secondaryActionClass}>Скасувати</Link>
       </div>
@@ -108,22 +112,33 @@ function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, o
   )
 }
 
-export default function TransferPage({ client, snapshot, transactionOverlay, pendingTransfers, queueTransfer,
-  resolveRejectedTransfer, lastServerDate }: OfflinePageProps & {
+export default function TransferPage({ client, snapshot, transactionOverlay, pendingTransfers, transferChanges, queueTransfer,
+  queueTransferChange, discardTransferChange, resolveRejectedTransfer, lastServerDate }: OfflinePageProps & {
   queueTransfer: QueueTransfer
+  queueTransferChange: QueueTransferChange
+  discardTransferChange: (operationId: string) => Promise<void>
   resolveRejectedTransfer: ResolveRejectedTransfer
-  lastServerDate?: string
 }) {
   const [params] = useSearchParams()
-  const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
+  const { transferId } = useParams()
+  const navigate = useNavigate()
+  const initialStatus = transferId || params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
   const [receipt, setReceipt] = useState<TransferReceipt | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [original, setOriginal] = useState<Transfer | null | undefined>(undefined)
   const saving = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, snapshot, transactionOverlay, pendingTransfers),
-    [client, snapshot, transactionOverlay, pendingTransfers])
+  const currentChange = transferChanges?.find((change) => change.original.id === transferId)
+  const load = useCallback(async (signal: AbortSignal) => {
+    const [accounts, transfer] = await Promise.all([
+      loadAccountOverview(client, signal, snapshot, transactionOverlay, pendingTransfers),
+      transferId ? loadTransfer(client, transferId, signal, snapshot, currentChange) : null,
+    ])
+    return { ...accounts, transfer }
+  }, [client, snapshot, transactionOverlay, pendingTransfers, transferId, currentChange])
   const { data: overview, setData: setOverview, hasError, retry } = useLoadData(load)
+  if (overview && original === undefined) setOriginal(overview.transfer)
 
   async function handleSave(fields: TransferFields) {
     if (saving.current) return
@@ -132,6 +147,12 @@ export default function TransferPage({ client, snapshot, transactionOverlay, pen
     setIsSaving(true)
     setSaveError(false)
     try {
+      if (transferId) {
+        if (original?.status !== 'planned') throw new Error('Planned transfer is unavailable')
+        await queueTransferChange(original, fields)
+        navigate('/transactions/planned', { replace: true })
+        return
+      }
       if (!snapshot && navigator.onLine && canReachSupabase()) {
         try {
           setReceipt(await saveTransfer(client, draftId, fields))
@@ -162,7 +183,15 @@ export default function TransferPage({ client, snapshot, transactionOverlay, pen
   const { accounts, changesByAccount } = overview
 
   if (params.get('rejected') === '1') {
-    return <RejectedTransfers accounts={accounts} pendingTransfers={pendingTransfers} lastServerDate={lastServerDate} onResolve={resolveRejectedTransfer} />
+    return <RejectedTransfers accounts={accounts} pendingTransfers={pendingTransfers} transferChanges={transferChanges}
+      lastServerDate={lastServerDate} onResolve={resolveRejectedTransfer} onDiscardChange={discardTransferChange} />
+  }
+
+  if (transferId && currentChange?.attempted && currentChange.delivery !== 'failed') {
+    return <p role="status" className="mt-6 text-sm text-zinc-400">Зачекай на завершення синхронізації попередньої зміни.</p>
+  }
+  if (transferId && (original ?? overview.transfer)?.status !== 'planned') {
+    return <p role="status" className="mt-6 text-sm text-zinc-400">Запланований переказ не знайдено.</p>
   }
 
   if (receipt) {
@@ -220,7 +249,8 @@ export default function TransferPage({ client, snapshot, transactionOverlay, pen
     )
   }
 
-  const activeAccounts = accounts.filter((account) => !account.is_hidden)
+  const activeAccounts = accounts.filter((account) => !account.is_hidden
+    || account.id === original?.from_account_id || account.id === original?.to_account_id)
   if (activeAccounts.length < 2) {
     return (
       <div className="mt-6 space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -236,5 +266,6 @@ export default function TransferPage({ client, snapshot, transactionOverlay, pen
     balance: getAccountBalance(account, changesByAccount),
   }))
 
-  return <TransferForm key={draftId} accounts={accountOptions} initialStatus={initialStatus} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransferForm key={transferId ?? draftId} accounts={accountOptions} transfer={original ?? overview.transfer ?? undefined}
+    initialStatus={initialStatus} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} lastServerDate={lastServerDate} />
 }

@@ -12,7 +12,7 @@ export type TransferFields = {
   comment: string | null
 }
 
-export type Transfer = TransferFields & { id: string; syncState?: 'pending' | 'failed' }
+export type Transfer = TransferFields & { id: string; updated_at?: string; syncState?: 'pending' | 'failed' }
 export type QueuedTransfer = {
   id: string
   fields: TransferFields
@@ -21,13 +21,31 @@ export type QueuedTransfer = {
 }
 export type QueueTransfer = (id: string, fields: TransferFields) => Promise<void>
 export type ResolveRejectedTransfer = (id: string, originalDate: string, date: string | null) => Promise<void>
+export type QueuedTransferChange = {
+  operationId: string
+  original: Transfer
+  next: TransferFields | null
+  attempted: boolean
+  delivery?: 'sent' | 'failed'
+}
+export type QueueTransferChange = (transfer: Transfer, fields: TransferFields | null) => Promise<void>
 
 export type TransferReceipt = {
   transfer: Transfer
   savedEarlierWithDifferentDetails: boolean
 }
 
-const columns = 'id,from_account_id,to_account_id,date,status,amount_uah_kop::text,comment'
+const columns = 'id,from_account_id,to_account_id,date,status,amount_uah_kop::text,comment,updated_at'
+const fieldNames = ['from_account_id', 'to_account_id', 'date', 'status', 'amount_uah_kop', 'comment'] as const
+
+export function sameTransferFields(first: TransferFields, second: TransferFields): boolean {
+  return fieldNames.every((field) => first[field] === second[field])
+}
+
+function projectTransfer(saved: Transfer | undefined | null, change: QueuedTransferChange): Transfer | null {
+  if (change.delivery === 'failed' || saved?.status === 'confirmed') return saved ?? null
+  return change.next && { ...change.original, ...change.next, syncState: 'pending' }
+}
 
 export function mergePendingTransfers<Row extends { id: string }>(saved: Row[], pending?: readonly QueuedTransfer[]): (Row | Transfer)[] {
   if (!pending?.length) return saved
@@ -37,10 +55,32 @@ export function mergePendingTransfers<Row extends { id: string }>(saved: Row[], 
   }))]
 }
 
-export async function loadTransfers(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter, snapshot?: OfflineSnapshot, pending?: readonly QueuedTransfer[]): Promise<Transfer[]> {
+export async function loadTransfers(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter,
+  snapshot?: OfflineSnapshot, pending?: readonly QueuedTransfer[], changes?: readonly QueuedTransferChange[]): Promise<Transfer[]> {
   const saved = snapshot ? snapshot.transfers.filter((row) => status === 'all' || row.status === status)
     : await readRows<Transfer>(client, 'transfers', columns, signal, status === 'all' ? undefined : ['status', status])
-  return status === 'planned' ? saved : mergePendingTransfers(saved, pending)
+  const rows = status === 'planned' ? saved : mergePendingTransfers(saved, pending)
+  if (status === 'confirmed' || !changes?.length) return rows
+  const merged = new Map(rows.map((row) => [row.id, row]))
+  for (const change of changes) {
+    const id = change.original.id
+    const projected = projectTransfer(merged.get(id), change)
+    if (projected) merged.set(id, projected)
+    else merged.delete(id)
+  }
+  return [...merged.values()]
+}
+
+export async function loadTransfer(client: SupabaseClient, id: string, signal: AbortSignal,
+  snapshot?: OfflineSnapshot, change?: QueuedTransferChange): Promise<Transfer | null> {
+  let saved = snapshot?.transfers.find((row) => row.id === id) ?? null
+  if (!snapshot) {
+    const { data, error } = await client.from('transfers').select(columns).eq('id', id).abortSignal(signal)
+      .maybeSingle().overrideTypes<Transfer, { merge: false }>()
+    if (error) throw error
+    saved = data
+  }
+  return change ? projectTransfer(saved, change) : saved
 }
 
 export async function saveTransfer(client: SupabaseClient, id: string, fields: TransferFields, sync?: { userId: string; signal: AbortSignal }): Promise<TransferReceipt> {
@@ -64,9 +104,28 @@ export async function saveTransfer(client: SupabaseClient, id: string, fields: T
     .overrideTypes<Transfer, { merge: false }>()
   if (readError) throw readError
 
-  const savedEarlierWithDifferentDetails = (Object.keys(fields) as (keyof TransferFields)[])
-    .some((field) => previous[field] !== fields[field])
+  const savedEarlierWithDifferentDetails = !sameTransferFields(previous, fields)
   return { transfer: previous, savedEarlierWithDifferentDetails }
+}
+
+export async function uploadQueuedTransferChange(client: SupabaseClient, userId: string, entry: QueuedTransferChange, signal: AbortSignal): Promise<'sent' | 'failed' | 'waiting'> {
+  const { original, next } = entry
+  const remote = await loadTransfer(client, original.id, signal)
+  if (next ? remote && sameTransferFields(remote, next) : !remote) return 'sent'
+  if (!remote?.updated_at || remote.status !== 'planned' || !sameTransferFields(remote, original)
+    || (original.updated_at && original.updated_at !== remote.updated_at)) return 'failed'
+
+  const table = client.from('transfers')
+  const query = next ? table.update({
+    from_account_id: next.from_account_id, to_account_id: next.to_account_id, date: next.date,
+    amount_uah_kop: next.amount_uah_kop, comment: next.comment,
+  }) : table.delete()
+  const { data, error } = await query.eq('id', remote.id).eq('user_id', userId).eq('status', 'planned').eq('updated_at', remote.updated_at)
+    .select('id').abortSignal(signal)
+  if (error) return error.code?.startsWith('23') || error.code === '42501' || error.code === '22003' ? 'failed' : 'waiting'
+  if (data?.length) return 'sent'
+  const latest = await loadTransfer(client, original.id, signal)
+  return (next ? latest && sameTransferFields(latest, next) : !latest) ? 'sent' : 'failed'
 }
 
 export async function uploadQueuedTransfer(client: SupabaseClient, userId: string, entry: QueuedTransfer, signal: AbortSignal): Promise<'sent' | 'failed' | 'date' | 'waiting'> {

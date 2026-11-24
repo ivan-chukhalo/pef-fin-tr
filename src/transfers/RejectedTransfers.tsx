@@ -4,7 +4,7 @@ import type { Account } from '../accounts/data'
 import DateInput from '../lib/DateInput'
 import { formatDate, isDateOnOrBefore } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
-import type { QueuedTransfer, ResolveRejectedTransfer } from './data'
+import type { QueuedTransfer, QueuedTransferChange, ResolveRejectedTransfer } from './data'
 
 const secondaryButtonClass = 'min-h-11 rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 
@@ -97,19 +97,54 @@ function RejectedTransferForm({ entry, accountNames, lastServerDate, onResolve }
   )
 }
 
-export default function RejectedTransfers({ accounts, pendingTransfers, lastServerDate, onResolve }: {
+function RejectedTransferChange({ change, accountNames, onDiscard }: {
+  change: QueuedTransferChange
+  accountNames: ReadonlyMap<string, string>
+  onDiscard: (operationId: string) => Promise<void>
+}) {
+  const [discarding, setDiscarding] = useState(false)
+  const [error, setError] = useState(false)
+  const { original } = change
+
+  async function discard() {
+    setDiscarding(true)
+    setError(false)
+    try {
+      await onDiscard(change.operationId)
+    } catch {
+      setError(true)
+    } finally {
+      setDiscarding(false)
+    }
+  }
+
+  return (
+    <article className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+      <h3 className="font-medium">{accountNames.get(original.from_account_id) ?? 'Рахунок'} → {accountNames.get(original.to_account_id) ?? 'Рахунок'}</h3>
+      <p className="text-sm text-zinc-300">{formatKopecks(BigInt(original.amount_uah_kop))} · {formatDate(original.date)}</p>
+      <p className="text-sm text-amber-200">{change.next ? 'Не вдалося синхронізувати зміни.' : 'Не вдалося синхронізувати видалення.'} Перевір збережений переказ у «Запланованих».</p>
+      {error && <p role="alert" className="text-sm text-rose-300">Не вдалося прибрати зміну з черги.</p>}
+      <button type="button" disabled={discarding} className={secondaryButtonClass} onClick={() => void discard()}>Прибрати зміну з черги</button>
+    </article>
+  )
+}
+
+export default function RejectedTransfers({ accounts, pendingTransfers, transferChanges, lastServerDate, onResolve, onDiscardChange }: {
   accounts: readonly Account[]
   pendingTransfers?: readonly QueuedTransfer[]
+  transferChanges?: readonly QueuedTransferChange[]
   lastServerDate?: string
   onResolve: ResolveRejectedTransfer
+  onDiscardChange: (operationId: string) => Promise<void>
 }) {
   const rejected = pendingTransfers?.filter(({ delivery }) => delivery === 'failed') ?? []
+  const rejectedChanges = transferChanges?.filter(({ delivery }) => delivery === 'failed') ?? []
   const accountNames = new Map(accounts.map(({ id, name }) => [id, name]))
 
   return (
     <section aria-labelledby="rejected-transfers" className="mt-6 max-w-2xl space-y-4">
       <h2 id="rejected-transfers" className="text-lg font-semibold">Відхилені перекази</h2>
-      {!rejected.length ? (
+      {!rejected.length && !rejectedChanges.length ? (
         <p role="status" className="text-sm text-zinc-300">
           {pendingTransfers?.some(({ delivery }) => delivery !== 'failed')
             ? 'Переказ очікує синхронізації.' : 'У черзі немає відхилених переказів.'}
@@ -120,6 +155,7 @@ export default function RejectedTransfers({ accounts, pendingTransfers, lastServ
             <p className="text-sm text-zinc-300">Якщо переказ відбувся, вибери його фактичну дату. Сервер приймає дати до <time dateTime={lastServerDate}>{formatDate(lastServerDate)}</time> включно.</p>
           )}
           {rejected.map((entry) => <RejectedTransferForm key={entry.id} entry={entry} accountNames={accountNames} lastServerDate={lastServerDate} onResolve={onResolve} />)}
+          {rejectedChanges.map((change) => <RejectedTransferChange key={change.operationId} change={change} accountNames={accountNames} onDiscard={onDiscardChange} />)}
         </>
       )}
       <Link to="/more/accounts" className="inline-flex min-h-11 items-center rounded text-sm text-emerald-200 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">До рахунків</Link>

@@ -8,7 +8,7 @@ import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 import type { TransactionFields } from './transactions/data'
 import type { QueueTransactionChange } from './transactions/TransactionEditorPage'
-import type { QueueTransfer, ResolveRejectedTransfer } from './transfers/data'
+import type { QueueTransfer, QueueTransferChange, ResolveRejectedTransfer } from './transfers/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -206,24 +206,27 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers,
-  queueTransaction, queueTransfer, resolveRejectedTransfer, lastServerDate, queueTransactionChange, resolveTransactionChange, retrySync }: OfflinePageProps & {
+export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers, transferChanges,
+  queueTransaction, queueTransfer, queueTransferChange, discardTransferChange, resolveRejectedTransfer,
+  lastServerDate, queueTransactionChange, resolveTransactionChange, retrySync }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
   queueTransfer: QueueTransfer
+  queueTransferChange: QueueTransferChange
+  discardTransferChange: (operationId: string) => Promise<void>
   resolveRejectedTransfer: ResolveRejectedTransfer
-  lastServerDate?: string
   queueTransactionChange: QueueTransactionChange
   resolveTransactionChange: (operationId: string, keepLocal: boolean) => Promise<void>
   retrySync: () => Promise<void>
 }) {
   const readOnly = !!snapshot
-  const pageProps = { client, snapshot, transactionOverlay, pendingTransfers }
+  const pageProps = { client, snapshot, transactionOverlay, pendingTransfers, transferChanges, lastServerDate }
   const canRetry = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed')
     || transactionOverlay?.changes.some((entry) => entry.delivery === 'failed' && !isRejectedConfirmation(entry))
     || pendingTransfers?.some(({ delivery, failure }) => delivery === 'failed' && failure === 'other'))
   const hasConflicts = transactionOverlay?.changes.some(({ conflict }) => !!conflict) ?? false
-  const hasRejectedTransfers = pendingTransfers?.some(({ delivery }) => delivery === 'failed') ?? false
+  const hasRejectedTransfers = !!(pendingTransfers?.some(({ delivery }) => delivery === 'failed')
+    || transferChanges?.some(({ delivery }) => delivery === 'failed'))
   const hasRejectedConfirmations = transactionOverlay?.changes.some(isRejectedConfirmation) ?? false
   return (
     <HashRouter>
@@ -245,7 +248,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
                 >
                   {path === home.path && <HomePage {...pageProps} />}
                   {path === analytics.path && <AnalyticsPage {...pageProps} />}
-                  {path === forecast.path && <ForecastPage {...pageProps} />}
+                  {path === forecast.path && <ForecastPage {...pageProps} queueTransactionChange={queueTransactionChange} queueTransferChange={queueTransferChange} />}
                   {path === accounts.path && <AccountsPage {...pageProps} />}
                   {path === categories.path && <CategoriesPage {...pageProps} />}
                   {path === transactions.path && <TransactionsPage {...pageProps} queueTransactionChange={queueTransactionChange} resolveTransactionChange={resolveTransactionChange} />}
@@ -299,7 +302,17 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={transfer.path}
             element={
               <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
-                <TransferPage {...pageProps} queueTransfer={queueTransfer} resolveRejectedTransfer={resolveRejectedTransfer} lastServerDate={lastServerDate} />
+                <TransferPage {...pageProps} queueTransfer={queueTransfer} queueTransferChange={queueTransferChange}
+                  discardTransferChange={discardTransferChange} resolveRejectedTransfer={resolveRejectedTransfer} />
+              </SectionPage>
+            }
+          />
+          <Route
+            path="/transactions/transfer/:transferId/edit"
+            element={
+              <SectionPage title="Редагувати запланований переказ" showQuickAdd={false}>
+                <TransferPage key="edit-transfer" {...pageProps} queueTransfer={queueTransfer} queueTransferChange={queueTransferChange}
+                  discardTransferChange={discardTransferChange} resolveRejectedTransfer={resolveRejectedTransfer} />
               </SectionPage>
             }
           />
@@ -307,7 +320,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={planned.path}
             element={
               <SectionPage title={planned.label} showQuickAdd={false}>
-                <PlannedOperationsPage {...pageProps} />
+                <PlannedOperationsPage {...pageProps} queueTransactionChange={queueTransactionChange} queueTransferChange={queueTransferChange} />
               </SectionPage>
             }
           />

@@ -32,6 +32,7 @@ type TransactionFormProps = {
   lastUsdRate: string
   isSaving: boolean
   saveError: boolean
+  lastServerDate?: string
 } & ({
   recurringTemplate?: never
   transaction: TransactionFields | null
@@ -98,7 +99,7 @@ export default function TransactionForm(props: TransactionFormProps) {
     const date = String(fields.get('date') ?? '')
     const dateError = recurring
       ? isDateOnOrBefore(date) ? '' : 'Вкажіть коректну дату першої операції.'
-      : getOperationDateError(date, status, transaction?.date)
+      : getOperationDateError(date, status, transaction?.date, props.lastServerDate)
     if (dateError) {
       setErrorMessage(dateError)
       return
@@ -187,6 +188,7 @@ export default function TransactionForm(props: TransactionFormProps) {
             status={status}
             onStatusChange={setStatus}
             label={confirming ? 'Фактична дата' : 'Дата'}
+            lastServerDate={props.lastServerDate}
           />
         )}
         <Field id="transaction-amount" label="Сума">

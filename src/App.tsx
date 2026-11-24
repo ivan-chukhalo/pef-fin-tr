@@ -6,8 +6,9 @@ import { useOfflineData } from './offline/useOfflineData'
 import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
-  const { online, userId, snapshot, transactionOverlay, pendingTransfers,
-    queueTransaction, queueTransfer, resolveRejectedTransfer, queueTransactionChange, resolveTransactionChange, retrySync } = useOfflineData(supabase)
+  const { online, userId, snapshot, transactionOverlay, pendingTransfers, transferChanges,
+    queueTransaction, queueTransfer, queueTransferChange, discardTransferChange,
+    resolveRejectedTransfer, queueTransactionChange, resolveTransactionChange, retrySync } = useOfflineData(supabase)
   const worker = useOfflineWorker()
 
   if (supabase && userId && (online || snapshot)) {
@@ -18,8 +19,11 @@ function App() {
       snapshot={online ? undefined : snapshot ?? undefined}
       transactionOverlay={transactionOverlay}
       pendingTransfers={pendingTransfers}
+      transferChanges={transferChanges}
       queueTransaction={queueTransaction}
       queueTransfer={queueTransfer}
+      queueTransferChange={queueTransferChange}
+      discardTransferChange={discardTransferChange}
       resolveRejectedTransfer={resolveRejectedTransfer}
       lastServerDate={snapshot ? todayInKyiv(new Date(snapshot.exported_at)) : undefined}
       queueTransactionChange={queueTransactionChange}
