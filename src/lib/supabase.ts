@@ -24,21 +24,22 @@ function setReachable(value: boolean) {
 }
 
 const fetchWithFinanceChanges: typeof fetch = async (input, init) => {
+  const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
+  const requestUrl = new URL(input instanceof Request ? input.url : input)
+  const ownDataApi = requestUrl.origin === project?.origin && requestUrl.pathname.startsWith('/rest/v1/')
   let response: Response
   try {
-    response = await fetch(input, init)
+    // Online reads must see server changes. IndexedDB holds the separate offline copy.
+    response = await fetch(input, ownDataApi && method === 'GET' ? { ...init, cache: 'no-store' } : init)
   } catch (error) {
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
     if (navigator.onLine && error instanceof TypeError && !signal?.aborted && getRememberedUserId()) setReachable(false)
     throw error
   }
   setReachable(true)
-  const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
-  if (response.ok && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
-    const requestUrl = new URL(input instanceof Request ? input.url : input)
-    if (requestUrl.origin === project?.origin && financeWritePaths.has(requestUrl.pathname)) {
-      financeChanges.dispatchEvent(new Event('change'))
-    }
+  if (response.ok && ownDataApi && financeWritePaths.has(requestUrl.pathname)
+    && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+    financeChanges.dispatchEvent(new Event('change'))
   }
   return response
 }
