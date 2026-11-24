@@ -44,8 +44,18 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
     setSaveError(false)
     try {
       let date = fields.date
-      if (confirming) date = await confirmTransaction(client, draftId, fields)
-      else if (!transactionId && fields.status === 'confirmed' && queueTransaction) {
+      if (confirming) {
+        if (!original || !queueTransactionChange) throw new Error('Planned transaction is unavailable')
+        if (openedOffline || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(original, fields)
+        else {
+          try {
+            date = await confirmTransaction(client, draftId, fields)
+          } catch (error) {
+            if (navigator.onLine && canReachSupabase()) throw error
+            await queueTransactionChange(original, fields)
+          }
+        }
+      } else if (!transactionId && fields.status === 'confirmed' && queueTransaction) {
         if (snapshot || !navigator.onLine || !canReachSupabase()) await queueTransaction(draftId, fields)
         else {
           try {
@@ -87,6 +97,10 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
     ) : <p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо форму…</p>
   }
 
+  if (currentChange?.conflict || currentChange?.attempted || currentChange?.original.status === 'planned') {
+    return <p role="status" className="mt-6 text-sm text-zinc-400">{currentChange.conflict ? 'Вибери версію транзакції в історії.' : 'Зачекай на завершення синхронізації попередньої зміни.'}</p>
+  }
+
   if (transactionId && !data.transaction) {
     return (
       <div className="mt-6 space-y-3">
@@ -96,11 +110,8 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
     )
   }
 
-  if (snapshot && data.transaction?.status === 'planned') {
+  if (snapshot && !confirming && data.transaction?.status === 'planned') {
     return <p role="status" className="mt-6 text-sm text-zinc-400">Для редагування запланованої операції потрібен інтернет.</p>
-  }
-  if (currentChange?.conflict || currentChange?.attempted) {
-    return <p role="status" className="mt-6 text-sm text-zinc-400">{currentChange.conflict ? 'Вибери версію транзакції в історії.' : 'Зачекай на завершення синхронізації попередньої зміни.'}</p>
   }
 
   const status = confirming ? 'confirmed' : (original ?? data.transaction)?.status ?? initialStatus

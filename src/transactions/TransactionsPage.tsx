@@ -77,9 +77,9 @@ function TransactionRow({ transaction, accountName, category, canChange, confirm
   )
 }
 
-export default function TransactionsPage({ client, snapshot, transactionOverlay, queueTransactionChange, resolveTransactionConflict }: OfflinePageProps & {
+export default function TransactionsPage({ client, snapshot, transactionOverlay, queueTransactionChange, resolveTransactionChange }: OfflinePageProps & {
   queueTransactionChange: QueueTransactionChange
-  resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
+  resolveTransactionChange: (operationId: string, keepLocal: boolean) => Promise<void>
 }) {
   const [params, setParams] = useSearchParams()
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -187,7 +187,7 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
       </fieldset>
 
       {deleteError && <p role="alert" className="text-sm text-rose-300">Не вдалося видалити транзакцію. Спробуйте ще раз.</p>}
-      <TransactionConflicts changes={transactionOverlay?.changes ?? []} accounts={accounts} categories={categories} onResolve={resolveTransactionConflict} />
+      <TransactionConflicts changes={transactionOverlay?.changes ?? []} accounts={accounts} categories={categories} onResolve={resolveTransactionChange} />
       {filtered.length ? (
         <ul aria-label="Список транзакцій" className="grid gap-3">
           {filtered.map((transaction) => (
@@ -196,7 +196,8 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
               transaction={transaction}
               accountName={accounts.get(transaction.account_id)?.name ?? 'Рахунок'}
               category={categories.get(transaction.category_id)}
-              canChange={!changes.get(transaction.id)?.attempted && !changes.get(transaction.id)?.conflict}
+              canChange={!changes.get(transaction.id)?.attempted && !changes.get(transaction.id)?.conflict
+                && changes.get(transaction.id)?.original.status !== 'planned'}
               confirming={confirmingId === transaction.id}
               isDeleting={isDeleting}
               onConfirm={() => {

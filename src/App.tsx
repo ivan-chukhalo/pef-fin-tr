@@ -7,7 +7,7 @@ import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
   const { online, userId, snapshot, transactionOverlay, pendingTransfers,
-    queueTransaction, queueTransfer, resolveRejectedTransfer, queueTransactionChange, resolveTransactionConflict, retrySync } = useOfflineData(supabase)
+    queueTransaction, queueTransfer, resolveRejectedTransfer, queueTransactionChange, resolveTransactionChange, retrySync } = useOfflineData(supabase)
   const worker = useOfflineWorker()
 
   if (supabase && userId && (online || snapshot)) {
@@ -23,7 +23,7 @@ function App() {
       resolveRejectedTransfer={resolveRejectedTransfer}
       lastServerDate={snapshot ? todayInKyiv(new Date(snapshot.exported_at)) : undefined}
       queueTransactionChange={queueTransactionChange}
-      resolveTransactionConflict={resolveTransactionConflict}
+      resolveTransactionChange={resolveTransactionChange}
       retrySync={retrySync}
       offlineReadiness={online && import.meta.env.PROD ? readiness : undefined}
     />

@@ -33,14 +33,15 @@ type OperationListProps = {
 
 const actionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
-function PlannedTransactionActions({ id, client, onChange }: TransactionActions & { id: string }) {
+function PlannedTransactionActions({ id, onlineActions }: { id: string; onlineActions?: TransactionActions }) {
   const [confirming, setConfirming] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
 
   async function remove() {
-    if (deleting.current) return
+    if (!onlineActions || deleting.current) return
+    const { client, onChange } = onlineActions
     deleting.current = true
     setIsDeleting(true)
     setDeleteError(false)
@@ -58,7 +59,7 @@ function PlannedTransactionActions({ id, client, onChange }: TransactionActions 
     }
   }
 
-  if (confirming) {
+  if (confirming && onlineActions) {
     return (
       <div className="space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3 sm:col-span-2">
         <p className="text-sm text-rose-100">Видалити цю заплановану транзакцію?</p>
@@ -76,9 +77,9 @@ function PlannedTransactionActions({ id, client, onChange }: TransactionActions 
   const path = `/transactions/${id}`
   return (
     <div className="flex flex-wrap gap-2 sm:col-span-2">
-      <Link to={`${path}/edit`} className={actionClass}>Редагувати</Link>
+      {onlineActions && <Link to={`${path}/edit`} className={actionClass}>Редагувати</Link>}
       <Link to={`${path}/confirm`} className={actionClass}>Підтвердити</Link>
-      <button type="button" className={actionClass} onClick={() => setConfirming(true)}>Видалити</button>
+      {onlineActions && <button type="button" className={actionClass} onClick={() => setConfirming(true)}>Видалити</button>}
     </div>
   )
 }
@@ -157,7 +158,7 @@ export default function OperationList({
             {comment && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{comment}</p>}
           </div>
           <p className="min-w-0 font-semibold tabular-nums [overflow-wrap:anywhere] sm:text-right">{formatKopecks(amount)}</p>
-          {transactionActions && plannedTransactionId && <PlannedTransactionActions id={plannedTransactionId} {...transactionActions} />}
+          {plannedTransactionId && <PlannedTransactionActions id={plannedTransactionId} onlineActions={transactionActions} />}
         </li>
       ))}
     </ol>

@@ -10,15 +10,15 @@ import OperationList, { type TransactionActions } from './OperationList'
 
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
-export default function PlannedOperationsPage({ client, snapshot }: OfflinePageProps) {
+export default function PlannedOperationsPage({ client, snapshot, transactionOverlay }: OfflinePageProps) {
   const load = useCallback(async (signal: AbortSignal) => {
     const [options, transactions, transfers] = await Promise.all([
       loadTransactionOptions(client, signal, snapshot),
-      loadTransactions(client, signal, 'planned', snapshot),
+      loadTransactions(client, signal, 'planned', snapshot, transactionOverlay),
       loadTransfers(client, signal, 'planned', snapshot),
     ])
     return { ...options, transactions, transfers }
-  }, [client, snapshot])
+  }, [client, snapshot, transactionOverlay])
   const { data, setData, hasError, retry } = useLoadData(load)
   const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
     setData((current) => current && {

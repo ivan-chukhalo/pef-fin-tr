@@ -3,7 +3,7 @@ import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'reac
 import AccountsPage from './accounts/AccountsPage'
 import HomePage from './home/HomePage'
 import { formatDateTimeInKyiv } from './lib/dates'
-import type { OfflinePageProps, OfflineSnapshot } from './offline/snapshot'
+import { isRejectedConfirmation, type OfflinePageProps, type OfflineSnapshot } from './offline/snapshot'
 import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 import type { TransactionFields } from './transactions/data'
@@ -109,11 +109,12 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfers, hasConflicts, retrySync }: {
+function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfers, hasRejectedConfirmations, hasConflicts, retrySync }: {
   snapshot?: OfflineSnapshot
   offlineReadiness?: OfflineWorkerStatus
   canRetry: boolean
   hasRejectedTransfers: boolean
+  hasRejectedConfirmations: boolean
   hasConflicts: boolean
   retrySync: () => Promise<void>
 }) {
@@ -139,11 +140,14 @@ function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfer
               <Link to={transactions.path} className={`rounded underline underline-offset-2 ${focusClass}`}>Порівняти версії</Link>
             </p>
           )}
-          {!snapshot && (canRetry || hasRejectedTransfers) && (
+          {!snapshot && (canRetry || hasRejectedTransfers || hasRejectedConfirmations) && (
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300/30 bg-zinc-900 px-3 py-2 text-sm text-amber-200">
               <p role="status">Деякі операції залишилися на цьому пристрої після помилки синхронізації.</p>
               {hasRejectedTransfers && (
                 <Link to={`${transfer.path}?rejected=1`} className={`rounded underline underline-offset-2 ${focusClass}`}>Переглянути відхилені перекази</Link>
+              )}
+              {hasRejectedConfirmations && (
+                <Link to={transactions.path} className={`rounded underline underline-offset-2 ${focusClass}`}>Переглянути відхилені підтвердження</Link>
               )}
               {canRetry && <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retrySync()}>Повторити</button>}
             </div>
@@ -203,28 +207,29 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
 }
 
 export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers,
-  queueTransaction, queueTransfer, resolveRejectedTransfer, lastServerDate, queueTransactionChange, resolveTransactionConflict, retrySync }: OfflinePageProps & {
+  queueTransaction, queueTransfer, resolveRejectedTransfer, lastServerDate, queueTransactionChange, resolveTransactionChange, retrySync }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
   queueTransfer: QueueTransfer
   resolveRejectedTransfer: ResolveRejectedTransfer
   lastServerDate?: string
   queueTransactionChange: QueueTransactionChange
-  resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
+  resolveTransactionChange: (operationId: string, keepLocal: boolean) => Promise<void>
   retrySync: () => Promise<void>
 }) {
   const readOnly = !!snapshot
   const pageProps = { client, snapshot, transactionOverlay, pendingTransfers }
   const canRetry = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed')
-    || transactionOverlay?.changes.some(({ delivery }) => delivery === 'failed')
+    || transactionOverlay?.changes.some((entry) => entry.delivery === 'failed' && !isRejectedConfirmation(entry))
     || pendingTransfers?.some(({ delivery, failure }) => delivery === 'failed' && failure === 'other'))
   const hasConflicts = transactionOverlay?.changes.some(({ conflict }) => !!conflict) ?? false
   const hasRejectedTransfers = pendingTransfers?.some(({ delivery }) => delivery === 'failed') ?? false
+  const hasRejectedConfirmations = transactionOverlay?.changes.some(isRejectedConfirmation) ?? false
   return (
     <HashRouter>
       <Routes>
         <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} canRetry={canRetry}
-          hasRejectedTransfers={hasRejectedTransfers} hasConflicts={hasConflicts} retrySync={retrySync} />}>
+          hasRejectedTransfers={hasRejectedTransfers} hasRejectedConfirmations={hasRejectedConfirmations} hasConflicts={hasConflicts} retrySync={retrySync} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -243,7 +248,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
                   {path === forecast.path && <ForecastPage {...pageProps} />}
                   {path === accounts.path && <AccountsPage {...pageProps} />}
                   {path === categories.path && <CategoriesPage {...pageProps} />}
-                  {path === transactions.path && <TransactionsPage {...pageProps} queueTransactionChange={queueTransactionChange} resolveTransactionConflict={resolveTransactionConflict} />}
+                  {path === transactions.path && <TransactionsPage {...pageProps} queueTransactionChange={queueTransactionChange} resolveTransactionChange={resolveTransactionChange} />}
                   {path === settings.path && (
                     <div className="mt-6 space-y-4">
                       <dl className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -286,7 +291,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path="/transactions/:transactionId/confirm"
             element={
               <SectionPage title="Підтвердити транзакцію" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming transactionOverlay={transactionOverlay} /></OnlineAction>
+                <TransactionEditorPage {...pageProps} confirming queueTransactionChange={queueTransactionChange} />
               </SectionPage>
             }
           />

@@ -3,7 +3,7 @@ import type { Account } from '../accounts/data'
 import type { Category } from '../categories/data'
 import { formatDate } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
-import type { QueuedChange } from '../offline/snapshot'
+import { isRejectedConfirmation, type QueuedChange } from '../offline/snapshot'
 import type { Transaction } from './data'
 import { getTransactionLabels } from './labels'
 
@@ -29,6 +29,7 @@ function TransactionVersion({ title, transaction, accounts, categories }: {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-400">
             {labels.categoryLabel}
             <span>{labels.typeLabel}</span>
+            <span>{transaction.status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>
             <span>{accounts.get(transaction.account_id)?.name ?? 'Рахунок недоступний'}</span>
             <time dateTime={transaction.date}>{formatDate(transaction.date)}</time>
           </div>
@@ -51,7 +52,8 @@ export default function TransactionConflicts({ changes, accounts, categories, on
   const failedDeletions = deletions.filter(({ delivery }) => delivery === 'failed').length
   const pendingDeletions = deletions.length - failedDeletions
   const conflicts = changes.filter(({ conflict }) => conflict)
-  if (!deletions.length && !conflicts.length) return null
+  const rejectedConfirmations = changes.filter(isRejectedConfirmation)
+  if (!deletions.length && !conflicts.length && !rejectedConfirmations.length) return null
 
   async function choose(operationId: string, keepLocal: boolean) {
     if (resolving) return
@@ -70,6 +72,13 @@ export default function TransactionConflicts({ changes, accounts, categories, on
     <section className="space-y-3">
       {!!pendingDeletions && <p role="status" className="text-sm text-zinc-300">Видалення в черзі синхронізації · {pendingDeletions}</p>}
       {!!failedDeletions && <p role="status" className="text-sm text-amber-200">Видалення не синхронізовано · {failedDeletions}</p>}
+      {rejectedConfirmations.map(({ operationId, next }) => (
+        <article key={operationId} className="space-y-3 rounded-2xl border border-amber-300/30 bg-zinc-900 p-4">
+          <p className="text-sm text-amber-200">Сервер відхилив підтвердження. Поверни операцію до запланованих, щоб підтвердити її з коректними даними.</p>
+          <TransactionVersion title="Моє підтвердження" transaction={next} accounts={accounts} categories={categories} />
+          <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, false)}>Повернути до запланованих</button>
+        </article>
+      ))}
       {conflicts.map(({ operationId, original, next, conflict }) => (
         <article key={operationId} className="space-y-3 rounded-2xl border border-amber-300/30 bg-zinc-900 p-4">
           <h3 className="font-semibold">Порівняй версії · {getTransactionLabels(original, undefined).title}</h3>

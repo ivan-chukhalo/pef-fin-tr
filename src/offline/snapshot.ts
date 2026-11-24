@@ -45,6 +45,10 @@ export type QueuedChange = {
 
 export type TransactionOverlay = { drafts: readonly Transaction[]; changes: readonly QueuedChange[] }
 
+export function isRejectedConfirmation({ original, delivery }: QueuedChange): boolean {
+  return original.status === 'planned' && delivery === 'failed'
+}
+
 export function pendingTransaction(entry: QueuedTransaction): Transaction {
   return { ...entry.fields, id: entry.id, created_at: entry.createdAt, amount_uah_kop: entry.amountUah,
     syncState: entry.delivery === 'failed' ? 'failed' : 'pending' }
