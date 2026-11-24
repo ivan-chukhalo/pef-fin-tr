@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import CategoryLabel from '../categories/CategoryLabel'
@@ -9,9 +9,9 @@ import { getTransactionLabels } from '../transactions/labels'
 import { getComparisonMonths, loadAnalytics } from './data'
 import MonthlyComparison from './MonthlyComparison'
 
-export default function AnalyticsPage({ client }: { client: SupabaseClient }) {
+export default function AnalyticsPage({ client, snapshot }: OfflinePageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const load = useCallback((signal: AbortSignal) => loadAnalytics(client, signal), [client])
+  const load = useCallback((signal: AbortSignal) => loadAnalytics(client, signal, snapshot), [client, snapshot])
   const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {

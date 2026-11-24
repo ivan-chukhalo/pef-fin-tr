@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
@@ -13,10 +13,11 @@ const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-95
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const usdFormatter = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'USD' })
 
-function TransactionRow({ transaction, accountName, category, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
+function TransactionRow({ transaction, accountName, category, readOnly, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
   transaction: Transaction
   accountName: string
   category: Category | undefined
+  readOnly: boolean
   confirming: boolean
   isDeleting: boolean
   onConfirm: () => void
@@ -52,7 +53,7 @@ function TransactionRow({ transaction, accountName, category, confirming, isDele
         </div>
       </div>
 
-      {confirming ? (
+      {!readOnly && (confirming ? (
         <div className="mt-4 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
           <p className="text-sm text-rose-100">Видалити цю транзакцію?</p>
           <div className="flex flex-wrap gap-2">
@@ -67,18 +68,18 @@ function TransactionRow({ transaction, accountName, category, confirming, isDele
           <Link to={`/transactions/${transaction.id}/edit`} className={buttonClass}>Редагувати</Link>
           <button type="button" disabled={isDeleting} className={buttonClass} onClick={onConfirm}>Видалити</button>
         </div>
-      )}
+      ))}
     </li>
   )
 }
 
-export default function TransactionsPage({ client }: { client: SupabaseClient }) {
+export default function TransactionsPage({ client, snapshot }: OfflinePageProps) {
   const [params, setParams] = useSearchParams()
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal), [client])
+  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal, snapshot), [client, snapshot])
   const { data, setData, hasError, retry } = useLoadData(load)
 
   const currentMonth = todayInKyiv().slice(0, 7)
@@ -99,7 +100,7 @@ export default function TransactionsPage({ client }: { client: SupabaseClient })
   }
 
   async function handleDelete(id: string) {
-    if (deleting.current) return
+    if (snapshot || deleting.current) return
 
     deleting.current = true
     setIsDeleting(true)
@@ -178,6 +179,7 @@ export default function TransactionsPage({ client }: { client: SupabaseClient })
               transaction={transaction}
               accountName={accounts.get(transaction.account_id)?.name ?? 'Рахунок'}
               category={categories.get(transaction.category_id)}
+              readOnly={!!snapshot}
               confirming={confirmingId === transaction.id}
               isDeleting={isDeleting}
               onConfirm={() => {

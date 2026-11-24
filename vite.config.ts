@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import { createMonobankHandler } from './api/monobank.ts'
 
 function serveMonobank(env: Record<string, string>): Plugin {
@@ -27,6 +28,17 @@ export default defineConfig(({ command, mode }) => ({
   plugins: [
     react(),
     tailwindcss(),
+    VitePWA({
+      manifest: false,
+      injectRegister: 'script-defer',
+      registerType: 'prompt',
+      workbox: {
+        globPatterns: ['**/*.{html,js,css,png,webmanifest}'],
+        inlineWorkboxRuntime: true,
+        // HashRouter uses the entry document for every app route.
+        navigateFallbackAllowlist: [/^\/(?:index\.html)?(?:\?|$)/],
+      },
+    }),
     command === 'serve' && serveMonobank(loadEnv(mode, process.cwd(), ['VITE_SUPABASE_', 'MONOBANK_'])),
   ],
 }))

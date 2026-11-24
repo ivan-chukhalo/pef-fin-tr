@@ -1,8 +1,9 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import AccountsPage from './accounts/AccountsPage'
 import HomePage from './home/HomePage'
+import { formatDateTimeInKyiv } from './lib/dates'
+import type { OfflinePageProps, OfflineSnapshot } from './offline/snapshot'
 import { recurringPath } from './recurring/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
@@ -67,26 +68,28 @@ function DesktopNavigation() {
   )
 }
 
-function MobileNavigation() {
+function MobileNavigation({ readOnly }: { readOnly: boolean }) {
   return (
     <nav
       aria-label="Нижня навігація"
       className="fixed inset-x-0 bottom-0 z-10 border-t border-zinc-800 bg-zinc-900 pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      <div className="mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 py-2">
+      <div className={`mx-auto grid max-w-lg ${readOnly ? 'grid-cols-4' : 'grid-cols-5'} items-center gap-1 px-2 py-2`}>
         <NavLink to={home.path} className={mobileLinkClass}>
           {home.label}
         </NavLink>
         <NavLink to={transactions.path} className={mobileLinkClass}>
           {transactions.label}
         </NavLink>
-        <NavLink
-          to={addTransaction.path}
-          aria-label={addTransaction.label}
-          className={`mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-300 text-3xl leading-none text-zinc-950 transition-colors hover:bg-emerald-200 ${focusClass}`}
-        >
-          <span aria-hidden="true">+</span>
-        </NavLink>
+        {!readOnly && (
+          <NavLink
+            to={addTransaction.path}
+            aria-label={addTransaction.label}
+            className={`mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-300 text-3xl leading-none text-zinc-950 transition-colors hover:bg-emerald-200 ${focusClass}`}
+          >
+            <span aria-hidden="true">+</span>
+          </NavLink>
+        )}
         <NavLink to={analytics.path} className={mobileLinkClass}>
           {analytics.label}
         </NavLink>
@@ -98,7 +101,7 @@ function MobileNavigation() {
   )
 }
 
-function ShellLayout() {
+function ShellLayout({ snapshot }: { snapshot?: OfflineSnapshot }) {
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100 md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
       <DesktopNavigation />
@@ -107,10 +110,15 @@ function ShellLayout() {
           <BrandLink />
         </header>
         <main className="mx-auto max-w-6xl px-4 pt-7 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:px-10 md:py-10">
+          {snapshot && (
+            <p role="status" className="mb-4 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
+              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Для внесення змін потрібен інтернет.
+            </p>
+          )}
           <Outlet />
         </main>
       </div>
-      <MobileNavigation />
+      <MobileNavigation readOnly={!!snapshot} />
     </div>
   )
 }
@@ -150,11 +158,24 @@ function SectionPage({
   )
 }
 
-export default function AppShell({ client }: { client: SupabaseClient }) {
+function OnlineAction({ readOnly, children }: { readOnly: boolean; children: ReactNode }) {
+  const [hasOpened, setHasOpened] = useState(!readOnly)
+  if (!hasOpened && !readOnly) setHasOpened(true)
+  return (
+    <>
+      {readOnly && <p role="status" className="mt-6 text-sm text-zinc-400">Підключися до інтернету, щоб внести зміни.</p>}
+      {hasOpened && <fieldset disabled={readOnly} className="min-w-0">{children}</fieldset>}
+    </>
+  )
+}
+
+export default function AppShell({ client, snapshot }: OfflinePageProps) {
+  const readOnly = !!snapshot
+  const pageProps = { client, snapshot }
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout />}>
+        <Route element={<ShellLayout snapshot={snapshot} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -162,18 +183,19 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
               element={
                 <SectionPage
                   title={label}
-                  action={path === transactions.path && [planned, transfer, monobank].map(({ path, label }) => (
+                  showQuickAdd={!readOnly}
+                  action={path === transactions.path && (readOnly ? [planned] : [planned, transfer, monobank]).map(({ path, label }) => (
                     <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
                       {label}
                     </Link>
                   ))}
                 >
-                  {path === home.path && <HomePage client={client} />}
-                  {path === analytics.path && <AnalyticsPage client={client} />}
-                  {path === forecast.path && <ForecastPage client={client} />}
-                  {path === accounts.path && <AccountsPage client={client} />}
-                  {path === categories.path && <CategoriesPage client={client} />}
-                  {path === transactions.path && <TransactionsPage client={client} />}
+                  {path === home.path && <HomePage {...pageProps} />}
+                  {path === analytics.path && <AnalyticsPage {...pageProps} />}
+                  {path === forecast.path && <ForecastPage {...pageProps} />}
+                  {path === accounts.path && <AccountsPage {...pageProps} />}
+                  {path === categories.path && <CategoriesPage {...pageProps} />}
+                  {path === transactions.path && <TransactionsPage {...pageProps} />}
                   {path === settings.path && (
                     <div className="mt-6 space-y-4">
                       <dl className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -183,8 +205,8 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
                       <Link to={categories.path} className={`inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 ${focusClass}`}>
                         Керувати категоріями
                       </Link>
-                      <BackupDownload client={client} />
-                      <BackupRestore client={client} />
+                      {!readOnly && <BackupDownload client={client} />}
+                      {!readOnly && <BackupRestore client={client} />}
                     </div>
                   )}
                 </SectionPage>
@@ -195,15 +217,15 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={addTransaction.path}
             element={
               <SectionPage title={addTransaction.label} showQuickAdd={false}>
-                <TransactionEditorPage client={client} />
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
           <Route
             path="/transactions/:transactionId/edit"
             element={
-              <SectionPage title="Редагувати транзакцію">
-                <TransactionEditorPage client={client} />
+              <SectionPage title="Редагувати транзакцію" showQuickAdd={!readOnly}>
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -211,15 +233,15 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path="/transactions/:transactionId/confirm"
             element={
               <SectionPage title="Підтвердити транзакцію" showQuickAdd={false}>
-                <TransactionEditorPage client={client} confirming />
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming /></OnlineAction>
               </SectionPage>
             }
           />
           <Route
             path={transfer.path}
             element={
-              <SectionPage title={transfer.label}>
-                <TransferPage client={client} />
+              <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
+                <OnlineAction readOnly={readOnly}><TransferPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -227,7 +249,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={planned.path}
             element={
               <SectionPage title={planned.label} showQuickAdd={false}>
-                <PlannedOperationsPage client={client} />
+                <PlannedOperationsPage {...pageProps} />
               </SectionPage>
             }
           />
@@ -235,7 +257,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={monobank.path}
             element={
               <SectionPage title="Імпорт із monobank" showQuickAdd={false}>
-                <MonobankPage client={client} />
+                <OnlineAction readOnly={readOnly}><MonobankPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -243,7 +265,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={recurringPath}
             element={
               <SectionPage title="Повторювані операції" showQuickAdd={false}>
-                <RecurringTemplatesPage client={client} />
+                <RecurringTemplatesPage {...pageProps} />
               </SectionPage>
             }
           />
@@ -251,7 +273,7 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={`${recurringPath}/new`}
             element={
               <SectionPage title="Додати шаблон" showQuickAdd={false}>
-                <RecurringEditorPage client={client} />
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -259,14 +281,14 @@ export default function AppShell({ client }: { client: SupabaseClient }) {
             path={`${recurringPath}/:templateId/edit`}
             element={
               <SectionPage title="Редагувати шаблон" showQuickAdd={false}>
-                <RecurringEditorPage client={client} />
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} /></OnlineAction>
               </SectionPage>
             }
           />
           <Route
             path={more.path}
             element={
-              <SectionPage title={more.label}>
+              <SectionPage title={more.label} showQuickAdd={!readOnly}>
                 <nav aria-label="Додаткові розділи" className="mt-6 grid max-w-sm gap-1 rounded-2xl border border-zinc-800 bg-zinc-900 p-2">
                   {additionalSections.map(({ path, label }) => (
                     <NavLink key={path} to={path} className={sidebarLinkClass}>

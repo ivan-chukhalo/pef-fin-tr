@@ -3,6 +3,7 @@ import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
 import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
+import type { OfflineSnapshot } from '../offline/snapshot'
 
 export type Currency = 'UAH' | 'USD'
 
@@ -27,22 +28,23 @@ export type Transaction = TransactionFields & {
 
 const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
 
-export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed'): Promise<Transaction[]> {
+export function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot): Promise<Transaction[]> {
+  if (snapshot) return Promise.resolve(snapshot.transactions.filter((row) => status === 'all' || row.status === status))
   return readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
 }
 
-export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal) {
+export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
   const [accounts, categories] = await Promise.all([
-    loadAccounts(client, signal),
-    loadCategories(client, signal),
+    loadAccounts(client, signal, snapshot),
+    loadCategories(client, signal, snapshot),
   ])
   return { accounts, categories }
 }
 
-export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal) {
+export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
   const [options, transactions] = await Promise.all([
-    loadTransactionOptions(client, signal),
-    loadTransactions(client, signal),
+    loadTransactionOptions(client, signal, snapshot),
+    loadTransactions(client, signal, 'confirmed', snapshot),
   ])
 
   transactions.sort((first, second) =>

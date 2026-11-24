@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
+import type { OfflineSnapshot } from '../offline/snapshot'
 import type { TransactionFields } from '../transactions/data'
 
 export const recurringPath = '/transactions/recurring'
@@ -17,7 +18,8 @@ export type RecurringTemplate = RecurringTemplateFields & { id: string }
 const columns = 'id,account_id,category_id,type,currency,amount_original_kop::text,rate::text,purchase_name,comment,frequency,start_date,occurrences'
 const tableName = 'recurring_templates'
 
-export function loadRecurringTemplates(client: SupabaseClient, signal: AbortSignal) {
+export function loadRecurringTemplates(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
+  if (snapshot) return Promise.resolve([...snapshot.recurring_templates])
   return readRows<RecurringTemplate>(client, tableName, columns, signal)
 }
 

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadCategories } from '../categories/data'
+import type { OfflineSnapshot } from '../offline/snapshot'
 import { loadTransactions, type Transaction } from '../transactions/data'
 
 type CategoryExpenses = {
@@ -13,10 +14,10 @@ type MonthSummary = {
   expensesByCategory: Map<string, CategoryExpenses>
 }
 
-export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal) {
+export async function loadAnalytics(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
   const [transactions, categories] = await Promise.all([
-    loadTransactions(client, signal),
-    loadCategories(client, signal),
+    loadTransactions(client, signal, 'confirmed', snapshot),
+    loadCategories(client, signal, snapshot),
   ])
   const months = new Map<string, MonthSummary>()
 

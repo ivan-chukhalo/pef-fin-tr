@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
+import type { OfflineSnapshot } from '../offline/snapshot'
 
 export type AccountType = 'card' | 'cash'
 
@@ -39,11 +40,13 @@ export function getAccountBalance(account: Account, changesByAccount: ReadonlyMa
 
 const accountColumns = 'id,name,type,initial_balance_kop::text,is_hidden,created_at'
 
-export function loadAccounts(client: SupabaseClient, signal?: AbortSignal): Promise<Account[]> {
+export function loadAccounts(client: SupabaseClient, signal?: AbortSignal, snapshot?: OfflineSnapshot): Promise<Account[]> {
+  if (snapshot) return Promise.resolve(snapshot.accounts)
   return readRows<Account>(client, 'accounts', accountColumns, signal)
 }
 
-export function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal): Promise<TransferAmount[]> {
+export function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot): Promise<TransferAmount[]> {
+  if (snapshot) return Promise.resolve(snapshot.transfers.filter(({ status }) => status === 'confirmed'))
   return readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal, ['status', 'confirmed'])
 }
 
@@ -71,11 +74,13 @@ export function getAccountBalanceChanges(transactions: readonly TransactionAmoun
 export async function loadAccountOverview(
   client: SupabaseClient,
   signal: AbortSignal,
+  snapshot?: OfflineSnapshot,
 ): Promise<AccountOverview> {
   const [accounts, transactions, transfers] = await Promise.all([
-    loadAccounts(client, signal),
-    readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal, ['status', 'confirmed']),
-    loadTransferAmounts(client, signal),
+    loadAccounts(client, signal, snapshot),
+    snapshot ? snapshot.transactions.filter(({ status }) => status === 'confirmed')
+      : readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal, ['status', 'confirmed']),
+    loadTransferAmounts(client, signal, snapshot),
   ])
 
   return { accounts, changesByAccount: getAccountBalanceChanges(transactions, transfers) }

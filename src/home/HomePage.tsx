@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getAccountBalance, getAccountBalanceChanges, loadTransferAmounts } from '../accounts/data'
@@ -11,14 +11,14 @@ import { getTransactionLabels } from '../transactions/labels'
 const cardClass = 'min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900'
 const linkClass = 'inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
-export default function HomePage({ client }: { client: SupabaseClient }) {
+export default function HomePage({ client, snapshot }: OfflinePageProps) {
   const load = useCallback(async (signal: AbortSignal) => {
     const [history, transfers] = await Promise.all([
-      loadTransactionHistory(client, signal),
-      loadTransferAmounts(client, signal),
+      loadTransactionHistory(client, signal, snapshot),
+      loadTransferAmounts(client, signal, snapshot),
     ])
     return { ...history, changesByAccount: getAccountBalanceChanges(history.transactions, transfers) }
-  }, [client])
+  }, [client, snapshot])
   const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {

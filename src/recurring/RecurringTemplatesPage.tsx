@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDate } from '../lib/dates'
@@ -12,23 +12,23 @@ const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-
 const primaryClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const usdFormatter = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'USD' })
 
-export default function RecurringTemplatesPage({ client }: { client: SupabaseClient }) {
+export default function RecurringTemplatesPage({ client, snapshot }: OfflinePageProps) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
   const load = useCallback(async (signal: AbortSignal) => {
     const [options, templates] = await Promise.all([
-      loadTransactionOptions(client, signal),
-      loadRecurringTemplates(client, signal),
+      loadTransactionOptions(client, signal, snapshot),
+      loadRecurringTemplates(client, signal, snapshot),
     ])
     templates.sort((first, second) => first.start_date.localeCompare(second.start_date))
     return { ...options, templates }
-  }, [client])
+  }, [client, snapshot])
   const { data, setData, hasError, retry } = useLoadData(load)
 
   async function handleDelete(id: string) {
-    if (deleting.current) return
+    if (snapshot || deleting.current) return
 
     deleting.current = true
     setIsDeleting(true)
@@ -65,7 +65,7 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
   return (
     <div className="mt-6 space-y-5">
       <div className="flex flex-wrap gap-2">
-        <Link to={`${recurringPath}/new`} className={primaryClass}>Додати шаблон</Link>
+        {!snapshot && <Link to={`${recurringPath}/new`} className={primaryClass}>Додати шаблон</Link>}
         <Link to="/transactions/planned" className={buttonClass}>До запланованих</Link>
       </div>
       {data.templates.length === 0 ? (
@@ -91,7 +91,7 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
                   <span>Операцій у шаблоні: {template.occurrences}</span>
                   <span>Початок <time dateTime={template.start_date}>{formatDate(template.start_date)}</time></span>
                 </div>
-                {confirmingId === template.id ? (
+                {!snapshot && (confirmingId === template.id ? (
                   <div className="mt-4 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
                     <p className="text-sm text-rose-100">Видалити шаблон і всі його заплановані операції? Підтверджені операції залишаться в історії.</p>
                     {deleteError && <p role="alert" className="text-sm text-rose-300">Не вдалося видалити шаблон. Спробуйте ще раз.</p>}
@@ -107,7 +107,7 @@ export default function RecurringTemplatesPage({ client }: { client: SupabaseCli
                     <Link to={`${recurringPath}/${template.id}/edit`} className={buttonClass}>Редагувати</Link>
                     <button type="button" disabled={isDeleting} className={buttonClass} onClick={() => selectForDeletion(template.id)}>Видалити</button>
                   </div>
-                )}
+                ))}
               </li>
             )
           })}

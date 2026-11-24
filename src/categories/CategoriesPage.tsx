@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useEffect, useRef, useState } from 'react'
 import CategoryForm from './CategoryForm'
 import CategoryLabel from './CategoryLabel'
@@ -115,7 +115,7 @@ function CategoryList({
   )
 }
 
-export default function CategoriesPage({ client }: { client: SupabaseClient }) {
+export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
   const [categories, setCategories] = useState<Category[] | null>(null)
   const [usedCategoryIds, setUsedCategoryIds] = useState<ReadonlySet<string> | null>(null)
   const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null)
@@ -130,7 +130,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
   useEffect(() => {
     const controller = new AbortController()
 
-    void loadCategories(client, controller.signal).then(
+    void loadCategories(client, controller.signal, snapshot).then(
       (rows) => {
         if (!controller.signal.aborted) setCategories(rows)
       },
@@ -138,7 +138,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
         if (!controller.signal.aborted) setLoadError(true)
       },
     )
-    void loadUsedCategoryIds(client, controller.signal).then(
+    void loadUsedCategoryIds(client, controller.signal, snapshot).then(
       (ids) => {
         if (!controller.signal.aborted) setUsedCategoryIds(ids)
       },
@@ -148,7 +148,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     )
 
     return () => controller.abort()
-  }, [client, loadAttempt])
+  }, [client, loadAttempt, snapshot])
 
   function openEditor(category?: Category) {
     setFeedback(null)
@@ -166,7 +166,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
   }
 
   async function applyCategoryChange(change: () => Promise<string>, errorMessage: string) {
-    if (saving.current) return
+    if (snapshot || saving.current) return
 
     saving.current = true
     setIsSaving(true)
@@ -245,7 +245,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
     .sort((first, second) => first.name.localeCompare(second.name, 'uk-UA'))
   const groupName = categoryType === 'expense' ? 'витрат' : 'доходів'
   const listActions = {
-    disabled: isSaving || !!editor,
+    disabled: isSaving || !!editor || !!snapshot,
     usedCategoryIds,
     categoryToDelete,
     onEdit: openEditor,
@@ -274,7 +274,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
             </button>
           ))}
         </div>
-        {!editor && (
+        {!editor && !snapshot && (
           <button type="button" disabled={isSaving} className={buttonClass} onClick={() => openEditor()}>
             Додати категорію
           </button>
@@ -287,7 +287,7 @@ export default function CategoriesPage({ client }: { client: SupabaseClient }) {
           initialName={editor.initialName}
           initialColor={editor.initialColor}
           isNew={editor.isNew}
-          isSaving={isSaving}
+          isSaving={isSaving || !!snapshot}
           onSave={handleSave}
           onCancel={() => {
             setEditor(null)

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useEffect, useRef, useState } from 'react'
 import { formatKopecks } from '../lib/money'
 import AccountForm from './AccountForm'
@@ -58,7 +58,7 @@ function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHid
   )
 }
 
-export default function AccountsPage({ client }: { client: SupabaseClient }) {
+export default function AccountsPage({ client, snapshot }: OfflinePageProps) {
   const [overview, setOverview] = useState<AccountOverview | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
@@ -70,7 +70,7 @@ export default function AccountsPage({ client }: { client: SupabaseClient }) {
   useEffect(() => {
     const controller = new AbortController()
 
-    void loadAccountOverview(client, controller.signal).then(
+    void loadAccountOverview(client, controller.signal, snapshot).then(
       (data) => {
         if (!controller.signal.aborted) setOverview(data)
       },
@@ -81,7 +81,7 @@ export default function AccountsPage({ client }: { client: SupabaseClient }) {
     )
 
     return () => controller.abort()
-  }, [client, loadAttempt])
+  }, [client, loadAttempt, snapshot])
 
   function openEditor(account?: Account) {
     setFeedback(null)
@@ -93,7 +93,7 @@ export default function AccountsPage({ client }: { client: SupabaseClient }) {
     successMessage: string,
     errorMessage: string,
   ): Promise<boolean> {
-    if (saving.current) return false
+    if (snapshot || saving.current) return false
 
     saving.current = true
     setIsSaving(true)
@@ -161,14 +161,14 @@ export default function AccountsPage({ client }: { client: SupabaseClient }) {
   const hiddenAccounts = sortedAccounts.filter((account) => account.is_hidden)
   const listProps = {
     changesByAccount: overview.changesByAccount,
-    isSaving,
+    isSaving: isSaving || !!snapshot,
     onEdit: openEditor,
     onToggleHidden: handleToggleHidden,
   }
 
   return (
     <div className="mt-6 space-y-5">
-      {!editor && (
+      {!editor && !snapshot && (
         <button type="button" disabled={isSaving} className={buttonClass} onClick={() => openEditor()}>
           Додати рахунок
         </button>
@@ -177,7 +177,7 @@ export default function AccountsPage({ client }: { client: SupabaseClient }) {
         <AccountForm
           key={editor.id}
           account={editor.account}
-          isSaving={isSaving}
+          isSaving={isSaving || !!snapshot}
           onSave={handleSave}
           onCancel={() => {
             setEditor(null)

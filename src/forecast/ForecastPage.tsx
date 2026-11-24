@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback, useState } from 'react'
 import { getAccountBalance } from '../accounts/data'
 import DateInput from '../lib/DateInput'
@@ -18,7 +18,7 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
   data: ForecastData
   today: string
   date: string
-  transactionActions: TransactionActions
+  transactionActions?: TransactionActions
   sortBy: OperationSort
   onSortChange: (sort: OperationSort) => void
 }) {
@@ -103,10 +103,10 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
   )
 }
 
-export default function ForecastPage({ client }: { client: SupabaseClient }) {
+export default function ForecastPage({ client, snapshot }: OfflinePageProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<OperationSort>('date')
-  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal), [client])
+  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal, snapshot), [client, snapshot])
   const { data, setData, hasError, retry } = useLoadData(load)
   const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
     setData((current) => current && {
@@ -149,7 +149,7 @@ export default function ForecastPage({ client }: { client: SupabaseClient }) {
           data={data}
           today={today}
           date={date}
-          transactionActions={{ client, onChange: onTransactionChange }}
+          transactionActions={snapshot ? undefined : { client, onChange: onTransactionChange }}
           sortBy={sortBy}
           onSortChange={setSortBy}
         />

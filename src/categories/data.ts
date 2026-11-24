@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
+import type { OfflineSnapshot } from '../offline/snapshot'
 
 export type CategoryType = 'income' | 'expense'
 
@@ -64,8 +65,9 @@ export async function setCategoryHidden(client: SupabaseClient, id: string, isHi
   return data
 }
 
-export async function loadUsedCategoryIds(client: SupabaseClient, signal: AbortSignal) {
-  const rows = await readRows<{ id: string }>(client, 'category_history', 'id', signal, ['state', 'used'])
+export async function loadUsedCategoryIds(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
+  const rows = snapshot ? snapshot.category_history.filter(({ state }) => state === 'used')
+    : await readRows<{ id: string }>(client, 'category_history', 'id', signal, ['state', 'used'])
   return new Set(rows.map(({ id }) => id))
 }
 
@@ -90,7 +92,8 @@ async function defaultCategoryId(userId: string, key: string): Promise<string> {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export async function loadCategories(client: SupabaseClient, signal?: AbortSignal): Promise<Category[]> {
+export async function loadCategories(client: SupabaseClient, signal?: AbortSignal, snapshot?: OfflineSnapshot): Promise<Category[]> {
+  if (snapshot) return snapshot.categories
   const [{ data: { user }, error: userError }, categories] = await Promise.all([
     client.auth.getUser(),
     readRows<Category>(client, 'categories', columns, signal),
