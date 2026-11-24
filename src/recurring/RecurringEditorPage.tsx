@@ -8,7 +8,7 @@ import { loadLastUsdRate } from '../transactions/data'
 import TransactionForm from '../transactions/TransactionForm'
 import { loadRecurringTemplate, recurringPath, saveRecurringTemplate, type RecurringTemplateFields } from './data'
 
-function RecurringEditor({ client, templateId, transactionOverlay }: OfflinePageProps & { templateId?: string }) {
+function RecurringEditor({ client, templateId, transactionOverlay, pendingTransfers }: OfflinePageProps & { templateId?: string }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => templateId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -18,13 +18,13 @@ function RecurringEditor({ client, templateId, transactionOverlay }: OfflinePage
     const [accountData, categories, recurringTemplate, lastUsdRate] = await Promise.all([
       templateId
         ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
-        : loadAccountOverview(client, signal, undefined, transactionOverlay),
+        : loadAccountOverview(client, signal, undefined, transactionOverlay, pendingTransfers),
       loadCategories(client, signal),
       templateId ? loadRecurringTemplate(client, templateId, signal) : null,
       loadLastUsdRate(client, signal, undefined, transactionOverlay),
     ])
     return { ...accountData, categories, recurringTemplate, lastUsdRate }
-  }, [client, templateId, transactionOverlay])
+  }, [client, templateId, transactionOverlay, pendingTransfers])
   const { data, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: RecurringTemplateFields) {
@@ -72,7 +72,7 @@ function RecurringEditor({ client, templateId, transactionOverlay }: OfflinePage
   )
 }
 
-export default function RecurringEditorPage({ client, transactionOverlay }: OfflinePageProps) {
+export default function RecurringEditorPage({ client, transactionOverlay, pendingTransfers }: OfflinePageProps) {
   const { templateId } = useParams()
-  return <RecurringEditor key={templateId ?? 'new'} client={client} transactionOverlay={transactionOverlay} templateId={templateId} />
+  return <RecurringEditor key={templateId ?? 'new'} client={client} transactionOverlay={transactionOverlay} pendingTransfers={pendingTransfers} templateId={templateId} />
 }

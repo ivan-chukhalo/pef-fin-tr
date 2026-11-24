@@ -115,7 +115,11 @@ export default function OperationList({
       title: 'Переказ',
       categoryLabel: null,
       typeLabel: null,
-      syncLabel: null,
+      syncLabel: transfer.syncState && (
+        <span className="text-amber-200">
+          {transfer.syncState === 'failed' ? 'Не вдалося синхронізувати' : 'Очікує синхронізації'}
+        </span>
+      ),
       details: `${accountName(transfer.from_account_id)} → ${accountName(transfer.to_account_id)}`,
       amount: BigInt(transfer.amount_uah_kop),
       comment: transfer.comment,

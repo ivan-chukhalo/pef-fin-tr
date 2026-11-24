@@ -58,7 +58,7 @@ function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHid
   )
 }
 
-export default function AccountsPage({ client, snapshot, transactionOverlay }: OfflinePageProps) {
+export default function AccountsPage({ client, snapshot, transactionOverlay, pendingTransfers }: OfflinePageProps) {
   const [overview, setOverview] = useState<AccountOverview | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
@@ -70,7 +70,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay }: O
   useEffect(() => {
     const controller = new AbortController()
 
-    void loadAccountOverview(client, controller.signal, snapshot, transactionOverlay).then(
+    void loadAccountOverview(client, controller.signal, snapshot, transactionOverlay, pendingTransfers).then(
       (data) => {
         if (!controller.signal.aborted) setOverview(data)
       },
@@ -81,7 +81,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay }: O
     )
 
     return () => controller.abort()
-  }, [client, loadAttempt, snapshot, transactionOverlay])
+  }, [client, loadAttempt, snapshot, transactionOverlay, pendingTransfers])
 
   function openEditor(account?: Account) {
     setFeedback(null)

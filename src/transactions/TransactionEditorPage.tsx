@@ -12,7 +12,7 @@ import TransactionForm from './TransactionForm'
 type QueueTransaction = (id: string, fields: TransactionFields) => Promise<void>
 export type QueueTransactionChange = (original: Transaction, fields: TransactionFields | null) => Promise<void>
 
-function TransactionEditor({ client, snapshot, transactionOverlay, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
+function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransfers, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -24,13 +24,13 @@ function TransactionEditor({ client, snapshot, transactionOverlay, queueTransact
     const [accountData, categories, transaction, lastUsdRate] = await Promise.all([
       transactionId
         ? loadAccounts(client, signal, snapshot).then((accounts) => ({ accounts, changesByAccount: null }))
-        : loadAccountOverview(client, signal, snapshot, transactionOverlay),
+        : loadAccountOverview(client, signal, snapshot, transactionOverlay, pendingTransfers),
       loadCategories(client, signal, snapshot),
       transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all', snapshot, transactionOverlay) : null,
       loadLastUsdRate(client, signal, snapshot, transactionOverlay),
     ])
     return { ...accountData, categories, transaction, lastUsdRate }
-  }, [client, transactionId, confirming, snapshot, transactionOverlay])
+  }, [client, transactionId, confirming, snapshot, transactionOverlay, pendingTransfers])
   const { data, hasError, retry } = useLoadData(load)
   if (data && original === undefined) setOriginal(data.transaction)
   if (snapshot && !openedOffline) setOpenedOffline(true)

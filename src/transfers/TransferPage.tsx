@@ -6,18 +6,20 @@ import { formatDate } from '../lib/dates'
 import { formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, type OperationStatus } from '../lib/operations'
+import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
-import { saveTransfer, type TransferFields, type TransferReceipt } from './data'
+import { saveTransfer, type QueueTransfer, type TransferFields, type TransferReceipt } from './data'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const secondaryActionClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const primaryActionClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 const invalidAccountsMessage = 'Оберіть два різні рахунки.'
 
-function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: {
+function TransferForm({ accounts, initialStatus, offline, isSaving, saveError, onSave }: {
   accounts: AccountOption[]
   initialStatus: OperationStatus
+  offline: boolean
   isSaving: boolean
   saveError: boolean
   onSave: (fields: TransferFields) => void
@@ -26,6 +28,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
   const [toAccountId, setToAccountId] = useState('')
   const [status, setStatus] = useState(initialStatus)
   const [errorMessage, setErrorMessage] = useState('')
+  const planningBlocked = offline && status === 'planned'
 
   function clearAccountSelectionError() {
     setErrorMessage((message) => message === invalidAccountsMessage ? '' : message)
@@ -33,7 +36,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (isSaving) return
+    if (isSaving || planningBlocked) return
 
     const fields = new FormData(event.currentTarget)
     const amount = parseHryvnias(String(fields.get('amount') ?? ''))
@@ -73,7 +76,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
           <label htmlFor="transfer-amount">Сума, грн</label>
           <input id="transfer-amount" name="amount" inputMode="decimal" className={fieldClass} autoFocus required />
         </div>
-        <OperationDateField id="transfer-date" fieldClass={fieldClass} status={status} onStatusChange={setStatus} />
+        <OperationDateField id="transfer-date" fieldClass={fieldClass} status={status} onStatusChange={setStatus} planningAvailable={!offline} />
         <AccountPicker id="transfer-from" label="З рахунку" accounts={accounts} value={fromAccountId} onChange={(nextAccountId) => {
           setFromAccountId(nextAccountId)
           if (nextAccountId === toAccountId) setToAccountId('')
@@ -88,13 +91,14 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
           <textarea id="transfer-comment" name="comment" rows={2} className={fieldClass} />
         </div>
       </fieldset>
+      {planningBlocked && <p role="status" className="mt-4 text-sm text-zinc-300">Для планування переказу потрібен інтернет.</p>}
       {(errorMessage || saveError) && (
         <p role="alert" className="mt-4 text-sm text-rose-300">
           {errorMessage || 'Не вдалося підтвердити збереження переказу. Спробуйте ще раз.'}
         </p>
       )}
       <div className="mt-6 flex flex-wrap gap-3">
-        <button type="submit" disabled={isSaving} className={primaryActionClass}>
+        <button type="submit" disabled={isSaving || planningBlocked} className={primaryActionClass}>
           {isSaving ? 'Зберігаємо…' : status === 'planned' ? 'Запланувати' : 'Зберегти переказ'}
         </button>
         <Link to={status === 'planned' ? '/transactions/planned' : '/transactions'} className={secondaryActionClass}>Скасувати</Link>
@@ -103,7 +107,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
   )
 }
 
-export default function TransferPage({ client, transactionOverlay }: OfflinePageProps) {
+export default function TransferPage({ client, snapshot, transactionOverlay, pendingTransfers, queueTransfer }: OfflinePageProps & { queueTransfer: QueueTransfer }) {
   const [params] = useSearchParams()
   const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
@@ -111,7 +115,8 @@ export default function TransferPage({ client, transactionOverlay }: OfflinePage
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, undefined, transactionOverlay), [client, transactionOverlay])
+  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, snapshot, transactionOverlay, pendingTransfers),
+    [client, snapshot, transactionOverlay, pendingTransfers])
   const { data: overview, setData: setOverview, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransferFields) {
@@ -121,7 +126,16 @@ export default function TransferPage({ client, transactionOverlay }: OfflinePage
     setIsSaving(true)
     setSaveError(false)
     try {
-      setReceipt(await saveTransfer(client, draftId, fields))
+      if (!snapshot && navigator.onLine && canReachSupabase()) {
+        try {
+          setReceipt(await saveTransfer(client, draftId, fields))
+          return
+        } catch (error) {
+          if (navigator.onLine && canReachSupabase()) throw error
+        }
+      }
+      await queueTransfer(draftId, fields)
+      setReceipt({ transfer: { id: draftId, ...fields }, savedEarlierWithDifferentDetails: false })
     } catch {
       setSaveError(true)
     } finally {
@@ -143,6 +157,7 @@ export default function TransferPage({ client, transactionOverlay }: OfflinePage
 
   if (receipt) {
     const { transfer, savedEarlierWithDifferentDetails } = receipt
+    const pending = pendingTransfers?.find(({ id }) => id === transfer.id)
     const planned = transfer.status === 'planned'
     const source = accounts.find(({ id }) => id === transfer.from_account_id)?.name
     const destination = accounts.find(({ id }) => id === transfer.to_account_id)?.name
@@ -150,7 +165,11 @@ export default function TransferPage({ client, transactionOverlay }: OfflinePage
     return (
       <div className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
         <p role="status" className="text-base font-semibold text-emerald-200">
-          {savedEarlierWithDifferentDetails ? 'Попередній переказ уже збережено. Нижче його реквізити.' : planned ? 'Переказ заплановано.' : 'Переказ збережено.'}
+          {savedEarlierWithDifferentDetails ? 'Попередній переказ уже збережено. Нижче його реквізити.'
+            : planned ? 'Переказ заплановано.'
+            : pending?.delivery === 'failed' ? 'Переказ залишився на цьому пристрої після помилки синхронізації.'
+            : pending ? 'Переказ збережено на цьому пристрої. Очікує синхронізації.'
+            : 'Переказ збережено.'}
         </p>
         <dl className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
@@ -207,5 +226,5 @@ export default function TransferPage({ client, transactionOverlay }: OfflinePage
     balance: getAccountBalance(account, changesByAccount),
   }))
 
-  return <TransferForm key={draftId} accounts={accountOptions} initialStatus={initialStatus} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransferForm key={draftId} accounts={accountOptions} initialStatus={initialStatus} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }

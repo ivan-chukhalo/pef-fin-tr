@@ -3,13 +3,13 @@ import { getAccountBalanceChanges } from '../accounts/data'
 import { isOverdueOperation } from '../lib/operations'
 import type { OfflineSnapshot, TransactionOverlay } from '../offline/snapshot'
 import { loadTransactionOptions, loadTransactions, type Transaction } from '../transactions/data'
-import { loadTransfers } from '../transfers/data'
+import { loadTransfers, type QueuedTransfer } from '../transfers/data'
 
-export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay) {
+export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay, pendingTransfers?: readonly QueuedTransfer[]) {
   const [options, transactions, transfers] = await Promise.all([
     loadTransactionOptions(client, signal, snapshot),
     loadTransactions(client, signal, 'all', snapshot, overlay),
-    loadTransfers(client, signal, 'all', snapshot),
+    loadTransfers(client, signal, 'all', snapshot, pendingTransfers),
   ])
   return { ...options, transactions, transfers }
 }

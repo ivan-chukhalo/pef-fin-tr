@@ -8,6 +8,7 @@ import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 import type { TransactionFields } from './transactions/data'
 import type { QueueTransactionChange } from './transactions/TransactionEditorPage'
+import type { QueueTransfer } from './transfers/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -108,12 +109,12 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, retryTransactions }: {
+function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, retrySync }: {
   snapshot?: OfflineSnapshot
   offlineReadiness?: OfflineWorkerStatus
   syncFailed: boolean
   hasConflicts: boolean
-  retryTransactions: () => Promise<void>
+  retrySync: () => Promise<void>
 }) {
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100 md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
@@ -128,7 +129,7 @@ function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, ret
           )}
           {snapshot && (
             <p role="status" className="mb-4 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Зміни доходів і витрат збережуться на цьому пристрої.
+              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Доходи, витрати й перекази збережуться на цьому пристрої.
             </p>
           )}
           {hasConflicts && (
@@ -139,8 +140,8 @@ function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, ret
           )}
           {!snapshot && syncFailed && (
             <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-300/30 bg-zinc-900 px-3 py-2 text-sm text-amber-200">
-              <p role="status">Деякі транзакції залишилися на цьому пристрої після помилки синхронізації.</p>
-              <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retryTransactions()}>Повторити</button>
+              <p role="status">Деякі операції залишилися на цьому пристрої після помилки синхронізації.</p>
+              <button type="button" className={`rounded underline underline-offset-2 ${focusClass}`} onClick={() => void retrySync()}>Повторити</button>
             </div>
           )}
           <Outlet />
@@ -197,21 +198,25 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, queueTransaction, queueTransactionChange, resolveTransactionConflict, retryTransactions }: OfflinePageProps & {
+export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers,
+  queueTransaction, queueTransfer, queueTransactionChange, resolveTransactionConflict, retrySync }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
+  queueTransfer: QueueTransfer
   queueTransactionChange: QueueTransactionChange
   resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
-  retryTransactions: () => Promise<void>
+  retrySync: () => Promise<void>
 }) {
   const readOnly = !!snapshot
-  const pageProps = { client, snapshot, transactionOverlay }
-  const syncFailed = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed') || transactionOverlay?.changes.some(({ delivery }) => delivery === 'failed'))
+  const pageProps = { client, snapshot, transactionOverlay, pendingTransfers }
+  const syncFailed = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed')
+    || transactionOverlay?.changes.some(({ delivery }) => delivery === 'failed')
+    || pendingTransfers?.some(({ delivery }) => delivery === 'failed'))
   const hasConflicts = transactionOverlay?.changes.some(({ conflict }) => !!conflict) ?? false
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={syncFailed} hasConflicts={hasConflicts} retryTransactions={retryTransactions} />}>
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={syncFailed} hasConflicts={hasConflicts} retrySync={retrySync} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -219,7 +224,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
               element={
                 <SectionPage
                   title={label}
-                  action={path === transactions.path && (readOnly ? [planned] : [planned, transfer, monobank]).map(({ path, label }) => (
+                  action={path === transactions.path && (readOnly ? [planned, transfer] : [planned, transfer, monobank]).map(({ path, label }) => (
                     <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
                       {label}
                     </Link>
@@ -281,7 +286,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={transfer.path}
             element={
               <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
-                <OnlineAction readOnly={readOnly}><TransferPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
+                <TransferPage {...pageProps} queueTransfer={queueTransfer} />
               </SectionPage>
             }
           />
@@ -313,7 +318,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={`${recurringPath}/new`}
             element={
               <SectionPage title="Додати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} pendingTransfers={pendingTransfers} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -321,7 +326,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             path={`${recurringPath}/:templateId/edit`}
             element={
               <SectionPage title="Редагувати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} pendingTransfers={pendingTransfers} /></OnlineAction>
               </SectionPage>
             }
           />

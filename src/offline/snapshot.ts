@@ -4,7 +4,7 @@ import type { Category } from '../categories/data'
 import type { RecurringTemplate } from '../recurring/data'
 import { isBackup, summaryKeys } from '../settings/backup'
 import type { Transaction, TransactionFields } from '../transactions/data'
-import type { Transfer } from '../transfers/data'
+import type { QueuedTransfer, Transfer } from '../transfers/data'
 
 export type OfflineSnapshot = {
   exported_at: string
@@ -20,6 +20,7 @@ export type OfflinePageProps = {
   client: SupabaseClient
   snapshot?: OfflineSnapshot
   transactionOverlay?: TransactionOverlay
+  pendingTransfers?: readonly QueuedTransfer[]
 }
 
 export type QueuedTransaction = {
@@ -76,10 +77,11 @@ export async function downloadSnapshot(client: SupabaseClient, userId: string, s
   return data as unknown as OfflineSnapshot
 }
 
-type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; changes: QueuedChange[]; revision: number }
+type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; changes: QueuedChange[]; transferQueue: QueuedTransfer[]; revision: number }
 type StoredSnapshot = { key: string; snapshot: OfflineSnapshot | null }
 type StoredQueue = { key: string } & Pick<LocalFinance, 'queue' | 'revision'>
 type StoredChanges = { key: string; changes: QueuedChange[] }
+type StoredTransfers = { key: string; transferQueue: QueuedTransfer[] }
 
 async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<Result>) {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -104,17 +106,21 @@ async function accessLocalFinance(key: string, change?: (current: LocalFinance) 
   // An older open PWA may still replace its snapshot record. Keep the queue at a separate key.
   const queueKey = `${key}:queue`
   const changesKey = `${key}:changes`
-  let result: LocalFinance = { snapshot: null, queue: [], changes: [], revision: 0 }
+  const transfersKey = `${key}:transfers`
+  let result: LocalFinance = { snapshot: null, queue: [], changes: [], transferQueue: [], revision: 0 }
   let failure: unknown
   await withSnapshotStore(change ? 'readwrite' : 'readonly', (store) => {
     const snapshotRequest = store.get(key)
     const queueRequest = store.get(queueKey)
     const changesRequest = store.get(changesKey)
-    changesRequest.onsuccess = () => {
+    const transfersRequest = store.get(transfersKey)
+    transfersRequest.onsuccess = () => {
       const storedSnapshot: StoredSnapshot | undefined = snapshotRequest.result
       const storedQueue: StoredQueue | undefined = queueRequest.result
       const storedChanges: StoredChanges | undefined = changesRequest.result
-      const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], changes: storedChanges?.changes ?? [], revision: storedQueue?.revision ?? 0 }
+      const storedTransfers: StoredTransfers | undefined = transfersRequest.result
+      const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], changes: storedChanges?.changes ?? [],
+        transferQueue: storedTransfers?.transferQueue ?? [], revision: storedQueue?.revision ?? 0 }
       result = current
       if (!change || signal?.aborted) return
       try {
@@ -124,12 +130,13 @@ async function accessLocalFinance(key: string, change?: (current: LocalFinance) 
         if (next.snapshot !== current.snapshot) store.put({ key, snapshot: next.snapshot } satisfies StoredSnapshot)
         store.put({ key: queueKey, queue: next.queue, revision: result.revision } satisfies StoredQueue)
         if (next.changes !== current.changes) store.put({ key: changesKey, changes: next.changes } satisfies StoredChanges)
+        if (next.transferQueue !== current.transferQueue) store.put({ key: transfersKey, transferQueue: next.transferQueue } satisfies StoredTransfers)
       } catch (error) {
         failure = error
         store.transaction.abort()
       }
     }
-    return changesRequest
+    return transfersRequest
   }).catch((error) => { throw failure ?? error })
   return result
 }

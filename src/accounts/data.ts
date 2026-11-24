@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
 import { mergePendingTransactions, type OfflineSnapshot, type TransactionOverlay } from '../offline/snapshot'
+import { mergePendingTransfers, type QueuedTransfer } from '../transfers/data'
 
 export type AccountType = 'card' | 'cash'
 
@@ -45,9 +46,10 @@ export function loadAccounts(client: SupabaseClient, signal?: AbortSignal, snaps
   return readRows<Account>(client, 'accounts', accountColumns, signal)
 }
 
-export function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot): Promise<TransferAmount[]> {
-  if (snapshot) return Promise.resolve(snapshot.transfers.filter(({ status }) => status === 'confirmed'))
-  return readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal, ['status', 'confirmed'])
+export async function loadTransferAmounts(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly QueuedTransfer[]): Promise<TransferAmount[]> {
+  const saved = snapshot ? snapshot.transfers.filter(({ status }) => status === 'confirmed')
+    : await readRows<TransferAmount>(client, 'transfers', 'id,from_account_id,to_account_id,amount_uah_kop::text', signal, ['status', 'confirmed'])
+  return mergePendingTransfers(saved, pending)
 }
 
 export function getAccountBalanceChanges(transactions: readonly TransactionAmount[], transfers: readonly TransferAmount[]): Map<string, bigint> {
@@ -76,12 +78,13 @@ export async function loadAccountOverview(
   signal: AbortSignal,
   snapshot?: OfflineSnapshot,
   overlay?: TransactionOverlay,
+  pendingTransfers?: readonly QueuedTransfer[],
 ): Promise<AccountOverview> {
   const [accounts, transactions, transfers] = await Promise.all([
     loadAccounts(client, signal, snapshot),
     snapshot ? snapshot.transactions.filter(({ status }) => status === 'confirmed')
       : readRows<TransactionAmount>(client, 'transactions', 'id,account_id,type,amount_uah_kop::text', signal, ['status', 'confirmed']),
-    loadTransferAmounts(client, signal, snapshot),
+    loadTransferAmounts(client, signal, snapshot, pendingTransfers),
   ])
 
   return { accounts, changesByAccount: getAccountBalanceChanges(mergePendingTransactions(transactions, overlay), transfers) }
