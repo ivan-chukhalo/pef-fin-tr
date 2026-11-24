@@ -3,7 +3,7 @@ import type { Account } from '../accounts/data'
 import type { Category } from '../categories/data'
 import { formatDate } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
-import { isRejectedConfirmation, type QueuedChange } from '../offline/snapshot'
+import { canApplyTransactionChange, isRejectedConfirmation, type QueuedChange } from '../offline/snapshot'
 import type { Transaction } from './data'
 import { getTransactionLabels } from './labels'
 
@@ -87,7 +87,9 @@ export default function TransactionConflicts({ changes, accounts, categories, on
             <TransactionVersion title="Збережено в Supabase" transaction={conflict?.remote ?? null} accounts={accounts} categories={categories} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, true)}>{next ? 'Застосувати мою версію' : 'Підтвердити видалення'}</button>
+            {canApplyTransactionChange(next, conflict?.remote) && (
+              <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, true)}>{next ? 'Застосувати мою версію' : 'Підтвердити видалення'}</button>
+            )}
             <button type="button" className={actionClass} disabled={resolving} onClick={() => void choose(operationId, false)}>Залишити збережену версію</button>
           </div>
         </article>

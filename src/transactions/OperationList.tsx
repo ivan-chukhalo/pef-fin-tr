@@ -77,7 +77,7 @@ function PlannedTransactionActions({ id, onlineActions }: { id: string; onlineAc
   const path = `/transactions/${id}`
   return (
     <div className="flex flex-wrap gap-2 sm:col-span-2">
-      {onlineActions && <Link to={`${path}/edit`} className={actionClass}>Редагувати</Link>}
+      <Link to={`${path}/edit`} className={actionClass}>Редагувати</Link>
       <Link to={`${path}/confirm`} className={actionClass}>Підтвердити</Link>
       {onlineActions && <button type="button" className={actionClass} onClick={() => setConfirming(true)}>Видалити</button>}
     </div>
@@ -106,7 +106,7 @@ export default function OperationList({
         details: accountName(transaction.account_id),
         amount: BigInt(transaction.amount_uah_kop) * (income ? 1n : -1n),
         comment: transaction.comment,
-        plannedTransactionId: transaction.status === 'planned' ? transaction.id : null,
+        plannedTransaction: transaction.status === 'planned' && transaction.syncState !== 'conflict' ? transaction : null,
       }
     }),
     ...transfers.map((transfer) => ({
@@ -124,7 +124,7 @@ export default function OperationList({
       details: `${accountName(transfer.from_account_id)} → ${accountName(transfer.to_account_id)}`,
       amount: BigInt(transfer.amount_uah_kop),
       comment: transfer.comment,
-      plannedTransactionId: null,
+      plannedTransaction: null,
     })),
   ].sort((first, second) => {
     if (sortBy !== 'date') {
@@ -142,7 +142,7 @@ export default function OperationList({
 
   return (
     <ol aria-label={label} className="grid gap-3">
-      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, syncLabel, details, amount, comment, plannedTransactionId }) => (
+      {operations.map(({ key, date, status, title, categoryLabel, typeLabel, syncLabel, details, amount, comment, plannedTransaction }) => (
         <li key={key} className="grid min-w-0 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:p-5">
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <Heading className="font-semibold">{title}</Heading>
@@ -152,13 +152,14 @@ export default function OperationList({
               <span>{details}</span>
               <time dateTime={date}>{formatDate(date)}</time>
               {isOverdueOperation({ status, date }, today) ? <span className="text-amber-200">Прострочено</span> : (
-                syncLabel || (showStatus && <span>{status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>)
+                !syncLabel && showStatus && <span>{status === 'planned' ? 'Заплановано' : 'Підтверджено'}</span>
               )}
+              {syncLabel}
             </div>
             {comment && <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{comment}</p>}
           </div>
           <p className="min-w-0 font-semibold tabular-nums [overflow-wrap:anywhere] sm:text-right">{formatKopecks(amount)}</p>
-          {plannedTransactionId && <PlannedTransactionActions id={plannedTransactionId} onlineActions={transactionActions} />}
+          {plannedTransaction && <PlannedTransactionActions id={plannedTransaction.id} onlineActions={plannedTransaction.syncState ? undefined : transactionActions} />}
         </li>
       ))}
     </ol>

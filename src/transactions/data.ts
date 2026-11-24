@@ -3,7 +3,7 @@ import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
 import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
-import { mergePendingTransactions, projectedChange, type OfflineSnapshot, type QueuedChange, type QueuedTransaction, type TransactionOverlay } from '../offline/snapshot'
+import { canApplyTransactionChange, mergePendingTransactions, projectedChange, type OfflineSnapshot, type QueuedChange, type QueuedTransaction, type TransactionOverlay } from '../offline/snapshot'
 import { parseExchangeRate } from './exchange'
 
 export type Currency = 'UAH' | 'USD'
@@ -35,7 +35,7 @@ const fieldNames = ['account_id', 'category_id', 'type', 'date', 'status', 'curr
 export async function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, overlay?: TransactionOverlay): Promise<Transaction[]> {
   const rows = snapshot ? snapshot.transactions.filter((row) => status === 'all' || row.status === status)
     : await readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
-  return mergePendingTransactions(rows, overlay).filter((row) => status === 'all' || row.status === status)
+  return mergePendingTransactions(rows, overlay, status)
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
@@ -66,7 +66,7 @@ export async function loadTransaction(client: SupabaseClient, id: string, signal
     const local = projectedChange(change)
     return local && (status === 'all' || local.status === status) ? local : null
   }
-  const draft = status !== 'planned' ? overlay?.drafts.find((entry) => entry.id === id) : undefined
+  const draft = overlay?.drafts.find((entry) => entry.id === id && (status === 'all' || entry.status === status))
   if (snapshot) return snapshot.transactions.find((row) => row.id === id && (status === 'all' || row.status === status)) ?? draft ?? null
   const query = client.from('transactions')
     .select(columns)
@@ -134,6 +134,7 @@ export async function uploadQueuedChange(client: SupabaseClient, userId: string,
 Promise<{ delivery: 'sent' | 'failed' | 'waiting' } | { delivery: 'conflict'; remote: Transaction | null }> {
   const remote = await loadTransaction(client, entry.id, signal, 'all')
   const { base, next } = entry
+  if (!canApplyTransactionChange(next, remote)) return { delivery: 'conflict', remote }
   if (next ? remote && sameTransactionFields(next, remote) : !remote) return { delivery: 'sent' }
   const unchanged = base && remote ? (!base.updated_at || base.updated_at === remote.updated_at) && sameTransactionFields(base, remote) : !base && !remote
   if (!unchanged) return { delivery: 'conflict', remote }

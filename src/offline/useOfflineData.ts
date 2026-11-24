@@ -5,7 +5,7 @@ import { canReachSupabase, financeChanges, getRememberedUserId, snapshotKey, sup
 import { loadTransaction, sameTransactionFields, uploadQueuedChange, uploadQueuedTransaction, type Transaction, type TransactionFields } from '../transactions/data'
 import { convertToUah } from '../transactions/exchange'
 import { uploadQueuedTransfer, type QueueTransfer, type ResolveRejectedTransfer } from '../transfers/data'
-import { changeLocalFinance, downloadSnapshot, isRejectedConfirmation, pendingTransaction, readLocalFinance, removeSnapshot, type QueuedChange, type TransactionOverlay } from './snapshot'
+import { canApplyTransactionChange, changeLocalFinance, downloadSnapshot, isRejectedConfirmation, isTransactionConfirmation, pendingTransaction, readLocalFinance, removeSnapshot, type QueuedChange, type TransactionOverlay } from './snapshot'
 
 type LocalFinance = Awaited<ReturnType<typeof readLocalFinance>>
 
@@ -217,7 +217,7 @@ export function useOfflineData(client: SupabaseClient | null) {
   }, [client, userId, key, online])
 
   async function queueTransaction(id: string, fields: TransactionFields) {
-    if (!key || getRememberedUserId() !== userId || fields.status !== 'confirmed') throw new Error('Offline save is unavailable')
+    if (!key || getRememberedUserId() !== userId) throw new Error('Offline save is unavailable')
     const amountUah = convertToUah(BigInt(fields.amount_original_kop), fields.rate)
     if (amountUah === null) throw new Error('Invalid amount')
     const next = await changeLocalFinance(key, (current) => {
@@ -257,10 +257,12 @@ export function useOfflineData(client: SupabaseClient | null) {
   }
 
   async function queueTransactionChange(original: Transaction, fields: TransactionFields | null) {
-    if (!key || getRememberedUserId() !== userId || (original.status === 'planned' && !fields) || (fields && fields.status !== 'confirmed')) {
+    const confirming = original.status === 'planned' && fields?.status === 'confirmed'
+    const changingStatus = fields && fields.status !== original.status
+    if (!key || getRememberedUserId() !== userId || (changingStatus && !confirming) || (!fields && original.status === 'planned')) {
       throw new Error('Offline change is unavailable')
     }
-    if (original.status === 'planned' && fields) {
+    if (confirming && fields) {
       fields = { ...original, status: 'confirmed', date: fields.date, amount_original_kop: fields.amount_original_kop, rate: fields.rate }
     }
     const amountUah = fields ? convertToUah(BigInt(fields.amount_original_kop), fields.rate) : null
@@ -270,11 +272,13 @@ export function useOfflineData(client: SupabaseClient | null) {
       if (getRememberedUserId() !== userId) throw new Error('Session changed')
       const draft = current.queue.find(({ id }) => id === original.id)
       const prior = current.changes.find(({ id }) => id === original.id)
-      if (prior?.attempted || prior?.conflict || prior?.original.status === 'planned') throw new Error('A change is already syncing')
+      if (prior && (prior.attempted || prior.conflict || isTransactionConfirmation(prior))) throw new Error('A change is already syncing')
       if (draft?.attempted === false && draft.delivery !== 'sent' && !prior) {
         if (!sameTransactionFields(draft.fields, original)) throw new Error('The local transaction changed')
-        return { ...current, queue: current.queue.flatMap((item) => item.id !== original.id ? [item]
-          : fields ? [{ ...item, fields, amountUah: amountUah!.toString(), delivery: undefined }] : []) }
+        if (!confirming) {
+          return { ...current, queue: current.queue.flatMap((item) => item.id !== original.id ? [item]
+            : fields ? [{ ...item, fields, amountUah: amountUah!.toString(), delivery: undefined }] : []) }
+        }
       }
       if (prior && (!prior.next || !sameTransactionFields(prior.next, original))) throw new Error('The local transaction changed')
       const entry: QueuedChange = {
@@ -283,6 +287,7 @@ export function useOfflineData(client: SupabaseClient | null) {
         original: prior?.original ?? original,
         base: prior ? prior.base : draft ? pendingTransaction(draft) : original,
         next: fields ? { ...original, ...fields, amount_uah_kop: amountUah!.toString() } : null,
+        previousPlan: confirming ? prior?.next ?? undefined : undefined,
         attempted: false,
       }
       return { ...current, changes: [...current.changes.filter(({ id }) => id !== original.id), entry] }
@@ -301,9 +306,15 @@ export function useOfflineData(client: SupabaseClient | null) {
     const next = await changeLocalFinance(key, (state) => {
       const change = state.changes.find((entry) => entry.operationId === operationId)
       if (!change || getRememberedUserId() !== userId || (!change.conflict && (keepLocal || !isRejectedConfirmation(change)))) return state
+      if (keepLocal && !canApplyTransactionChange(change.next, change.conflict?.remote)) return state
       const changes = state.changes.filter((entry) => entry.operationId !== operationId)
-      if (keepLocal && change.conflict) changes.push({ ...change, operationId: crypto.randomUUID(), base: change.conflict.remote, attempted: false, conflict: undefined, delivery: undefined })
-      const queue = state.queue.filter(({ id }) => id !== change.id)
+      const rejectedConfirmation = isRejectedConfirmation(change)
+      if (keepLocal && change.conflict) {
+        changes.push({ ...change, operationId: crypto.randomUUID(), base: change.conflict.remote, attempted: false, conflict: undefined, delivery: undefined })
+      } else if (rejectedConfirmation && change.previousPlan) {
+        changes.push({ ...change, operationId: crypto.randomUUID(), next: change.previousPlan, previousPlan: undefined, attempted: false, delivery: undefined })
+      }
+      const queue = rejectedConfirmation ? state.queue : state.queue.filter(({ id }) => id !== change.id)
       return { ...state, queue, changes }
     })
     rememberLocalChange(next)

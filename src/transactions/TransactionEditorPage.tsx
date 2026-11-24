@@ -5,7 +5,7 @@ import { loadCategories } from '../categories/data'
 import type { OperationStatus } from '../lib/operations'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
-import type { OfflinePageProps } from '../offline/snapshot'
+import { isTransactionConfirmation, type OfflinePageProps } from '../offline/snapshot'
 import { confirmTransaction, loadLastUsdRate, loadTransaction, saveTransaction, type Transaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
@@ -46,7 +46,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
       let date = fields.date
       if (confirming) {
         if (!original || !queueTransactionChange) throw new Error('Planned transaction is unavailable')
-        if (openedOffline || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(original, fields)
+        if (openedOffline || original.syncState || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(original, fields)
         else {
           try {
             date = await confirmTransaction(client, draftId, fields)
@@ -55,7 +55,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
             await queueTransactionChange(original, fields)
           }
         }
-      } else if (!transactionId && fields.status === 'confirmed' && queueTransaction) {
+      } else if (!transactionId && queueTransaction) {
         if (snapshot || !navigator.onLine || !canReachSupabase()) await queueTransaction(draftId, fields)
         else {
           try {
@@ -65,7 +65,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
             await queueTransaction(draftId, fields)
           }
         }
-      } else if (original?.status === 'confirmed' && queueTransactionChange) {
+      } else if (original && queueTransactionChange) {
         if (openedOffline || original.syncState || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(original, fields)
         else {
           try {
@@ -97,7 +97,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
     ) : <p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо форму…</p>
   }
 
-  if (currentChange?.conflict || currentChange?.attempted || currentChange?.original.status === 'planned') {
+  if (currentChange && (currentChange.conflict || currentChange.attempted || isTransactionConfirmation(currentChange))) {
     return <p role="status" className="mt-6 text-sm text-zinc-400">{currentChange.conflict ? 'Вибери версію транзакції в історії.' : 'Зачекай на завершення синхронізації попередньої зміни.'}</p>
   }
 
@@ -110,12 +110,8 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
     )
   }
 
-  if (snapshot && !confirming && data.transaction?.status === 'planned') {
-    return <p role="status" className="mt-6 text-sm text-zinc-400">Для редагування запланованої операції потрібен інтернет.</p>
-  }
-
   const status = confirming ? 'confirmed' : (original ?? data.transaction)?.status ?? initialStatus
-  return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
 export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange }) {

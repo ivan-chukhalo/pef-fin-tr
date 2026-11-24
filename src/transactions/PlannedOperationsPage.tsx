@@ -41,7 +41,7 @@ export default function PlannedOperationsPage({ client, snapshot, transactionOve
   return (
     <div className="mt-6 space-y-5">
       <div className="flex flex-wrap gap-2">
-        {!snapshot && <Link to="/transactions/new?plan=1" className={buttonClass}>Запланувати транзакцію</Link>}
+        <Link to="/transactions/new?plan=1" className={buttonClass}>Запланувати транзакцію</Link>
         {!snapshot && <Link to="/transactions/transfer?plan=1" className={buttonClass}>Запланувати переказ</Link>}
         <Link to={recurringPath} className={buttonClass}>Повторювані операції</Link>
       </div>

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Account } from '../accounts/data'
 import type { Category } from '../categories/data'
+import type { OperationStatusFilter } from '../lib/operations'
 import type { RecurringTemplate } from '../recurring/data'
 import { isBackup, summaryKeys } from '../settings/backup'
 import type { Transaction, TransactionFields } from '../transactions/data'
@@ -38,6 +39,7 @@ export type QueuedChange = {
   original: Transaction
   base: Transaction | null
   next: Transaction | null
+  previousPlan?: Transaction
   attempted: boolean
   delivery?: 'sent' | 'failed'
   conflict?: { remote: Transaction | null }
@@ -45,8 +47,16 @@ export type QueuedChange = {
 
 export type TransactionOverlay = { drafts: readonly Transaction[]; changes: readonly QueuedChange[] }
 
-export function isRejectedConfirmation({ original, delivery }: QueuedChange): boolean {
-  return original.status === 'planned' && delivery === 'failed'
+export function isTransactionConfirmation({ original, next }: QueuedChange): boolean {
+  return original.status === 'planned' && next?.status === 'confirmed'
+}
+
+export function isRejectedConfirmation(change: QueuedChange): boolean {
+  return change.delivery === 'failed' && isTransactionConfirmation(change)
+}
+
+export function canApplyTransactionChange(next: Transaction | null, remote: Transaction | null | undefined): boolean {
+  return next?.status !== 'planned' || remote?.status !== 'confirmed'
 }
 
 export function pendingTransaction(entry: QueuedTransaction): Transaction {
@@ -55,17 +65,21 @@ export function pendingTransaction(entry: QueuedTransaction): Transaction {
 }
 
 export function projectedChange(change: QueuedChange): Transaction | null {
+  const remote = change.conflict?.remote
+  if (remote && !canApplyTransactionChange(change.next, remote)) return { ...remote, syncState: 'conflict' }
   return change.next && { ...change.next, syncState: change.conflict ? 'conflict'
     : change.delivery === 'failed' ? 'failed' : 'pending' }
 }
 
-export function mergePendingTransactions<Row extends { id: string }>(rows: Row[], overlay?: TransactionOverlay): (Row | Transaction)[] {
+export function mergePendingTransactions<Row extends { id: string }>(rows: Row[], overlay?: TransactionOverlay, status: OperationStatusFilter = 'all'): (Row | Transaction)[] {
   if (!overlay) return rows
   const merged = new Map<string, Row | Transaction>(rows.map((row) => [row.id, row]))
-  for (const draft of overlay.drafts) if (!merged.has(draft.id)) merged.set(draft.id, draft)
+  for (const draft of overlay.drafts) {
+    if ((status === 'all' || draft.status === status) && !merged.has(draft.id)) merged.set(draft.id, draft)
+  }
   for (const change of overlay.changes) {
     const local = projectedChange(change)
-    if (local) merged.set(change.id, local)
+    if (local && (status === 'all' || local.status === status)) merged.set(change.id, local)
     else merged.delete(change.id)
   }
   return [...merged.values()]

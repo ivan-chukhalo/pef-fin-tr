@@ -87,7 +87,7 @@ export async function loadAccountOverview(
     loadTransferAmounts(client, signal, snapshot, pendingTransfers),
   ])
 
-  return { accounts, changesByAccount: getAccountBalanceChanges(mergePendingTransactions(transactions, overlay), transfers) }
+  return { accounts, changesByAccount: getAccountBalanceChanges(mergePendingTransactions(transactions, overlay, 'confirmed'), transfers) }
 }
 
 export async function saveAccount(
