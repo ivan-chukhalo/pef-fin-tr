@@ -1,14 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAccountBalanceChanges } from '../accounts/data'
 import { isOverdueOperation } from '../lib/operations'
-import type { OfflineSnapshot } from '../offline/snapshot'
+import type { OfflineSnapshot, TransactionOverlay } from '../offline/snapshot'
 import { loadTransactionOptions, loadTransactions, type Transaction } from '../transactions/data'
 import { loadTransfers } from '../transfers/data'
 
-export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly Transaction[]) {
+export async function loadForecastData(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay) {
   const [options, transactions, transfers] = await Promise.all([
     loadTransactionOptions(client, signal, snapshot),
-    loadTransactions(client, signal, 'all', snapshot, pending),
+    loadTransactions(client, signal, 'all', snapshot, overlay),
     loadTransfers(client, signal, 'all', snapshot),
   ])
   return { ...options, transactions, transfers }

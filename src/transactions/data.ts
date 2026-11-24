@@ -3,7 +3,8 @@ import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
 import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
-import { mergePendingTransactions, type OfflineSnapshot, type QueuedTransaction } from '../offline/snapshot'
+import { mergePendingTransactions, projectedChange, type OfflineSnapshot, type QueuedChange, type QueuedTransaction, type TransactionOverlay } from '../offline/snapshot'
+import { parseExchangeRate } from './exchange'
 
 export type Currency = 'UAH' | 'USD'
 
@@ -24,15 +25,17 @@ export type Transaction = TransactionFields & {
   id: string
   amount_uah_kop: string
   created_at: string
-  syncState?: 'pending' | 'failed'
+  updated_at?: string
+  syncState?: 'pending' | 'failed' | 'conflict'
 }
 
-const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at'
+const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at,updated_at'
+const fieldNames = ['account_id', 'category_id', 'type', 'date', 'status', 'currency', 'amount_original_kop', 'rate', 'purchase_name', 'comment'] as const satisfies readonly (keyof TransactionFields)[]
 
-export async function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, pending: readonly Transaction[] = []): Promise<Transaction[]> {
+export async function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, overlay?: TransactionOverlay): Promise<Transaction[]> {
   const rows = snapshot ? snapshot.transactions.filter((row) => status === 'all' || row.status === status)
     : await readRows<Transaction>(client, 'transactions', columns, signal, status === 'all' ? undefined : ['status', status])
-  return status === 'planned' ? rows : mergePendingTransactions(rows, pending)
+  return mergePendingTransactions(rows, overlay).filter((row) => status === 'all' || row.status === status)
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
@@ -43,10 +46,10 @@ export async function loadTransactionOptions(client: SupabaseClient, signal: Abo
   return { accounts, categories }
 }
 
-export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending?: readonly Transaction[]) {
+export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay) {
   const [options, transactions] = await Promise.all([
     loadTransactionOptions(client, signal, snapshot),
-    loadTransactions(client, signal, 'confirmed', snapshot, pending),
+    loadTransactions(client, signal, 'confirmed', snapshot, overlay),
   ])
 
   transactions.sort((first, second) =>
@@ -57,7 +60,14 @@ export async function loadTransactionHistory(client: SupabaseClient, signal: Abo
   return { ...options, transactions }
 }
 
-export async function loadTransaction(client: SupabaseClient, id: string, signal?: AbortSignal, status: OperationStatusFilter = 'confirmed'): Promise<Transaction | null> {
+export async function loadTransaction(client: SupabaseClient, id: string, signal?: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, overlay?: TransactionOverlay): Promise<Transaction | null> {
+  const change = overlay?.changes.find((entry) => entry.id === id)
+  if (change) {
+    const local = projectedChange(change)
+    return local && (status === 'all' || local.status === status) ? local : null
+  }
+  const draft = status !== 'planned' ? overlay?.drafts.find((entry) => entry.id === id) : undefined
+  if (snapshot) return snapshot.transactions.find((row) => row.id === id && (status === 'all' || row.status === status)) ?? draft ?? null
   const query = client.from('transactions')
     .select(columns)
     .eq('id', id)
@@ -67,12 +77,12 @@ export async function loadTransaction(client: SupabaseClient, id: string, signal
     .maybeSingle()
     .overrideTypes<Transaction, { merge: false }>()
   if (error) throw error
-  return data
+  return data ?? draft ?? null
 }
 
-export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, pending: readonly Transaction[] = []): Promise<string> {
-  if (snapshot) {
-    const rows = await loadTransactions(client, signal, 'confirmed', snapshot, pending)
+export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay): Promise<string> {
+  if (snapshot || overlay) {
+    const rows = await loadTransactions(client, signal, 'confirmed', snapshot, overlay)
     return latestUsd(rows)
   }
   const { data, error } = await client.from('transactions')
@@ -86,8 +96,7 @@ export async function loadLastUsdRate(client: SupabaseClient, signal: AbortSigna
     .maybeSingle()
     .overrideTypes<Pick<Transaction, 'id' | 'currency' | 'created_at' | 'rate'>, { merge: false }>()
   if (error) throw error
-  const rows = data ? [data] : []
-  return latestUsd(mergePendingTransactions(rows, pending))
+  return data?.rate ?? ''
 }
 
 function latestUsd(rows: readonly Pick<Transaction, 'id' | 'currency' | 'created_at' | 'rate'>[]) {
@@ -114,6 +123,39 @@ export async function uploadQueuedTransaction(client: SupabaseClient, userId: st
   if (data?.length) return 'sent'
   // A previous attempt may have committed before its response was lost.
   return await loadTransaction(client, entry.id, signal, 'all') ? 'sent' : 'waiting'
+}
+
+export function sameTransactionFields(first: TransactionFields, second: TransactionFields) {
+  return fieldNames.every((field) => field === 'rate'
+    ? parseExchangeRate(first.rate) === parseExchangeRate(second.rate) : first[field] === second[field])
+}
+
+export async function uploadQueuedChange(client: SupabaseClient, userId: string, entry: QueuedChange, signal: AbortSignal):
+Promise<{ delivery: 'sent' | 'failed' | 'waiting' } | { delivery: 'conflict'; remote: Transaction | null }> {
+  const remote = await loadTransaction(client, entry.id, signal, 'all')
+  const { base, next } = entry
+  if (next ? remote && sameTransactionFields(next, remote) : !remote) return { delivery: 'sent' }
+  const unchanged = base && remote ? (!base.updated_at || base.updated_at === remote.updated_at) && sameTransactionFields(base, remote) : !base && !remote
+  if (!unchanged) return { delivery: 'conflict', remote }
+
+  const table = client.from('transactions')
+  const payload = next && Object.fromEntries(fieldNames.map((field) => [field, next[field]]))
+  const getDelivery = (code?: string) => ({ delivery: code?.startsWith('23') || code === '22003' ? 'failed' : 'waiting' }) as const
+  if (!remote && payload && next) {
+    const { data, error } = await table.upsert({ ...payload, id: entry.id, user_id: userId, created_at: next.created_at }, { onConflict: 'id', ignoreDuplicates: true })
+      .select('id').abortSignal(signal)
+    if (error) return getDelivery(error.code)
+    if (data?.length) return { delivery: 'sent' }
+  } else if (remote?.updated_at) {
+    const query = (payload ? table.update(payload) : table.delete())
+      .eq('id', entry.id).eq('user_id', userId).eq('status', remote.status).eq('updated_at', remote.updated_at)
+    const { data, error } = await query.select('id').abortSignal(signal)
+    if (error) return getDelivery(error.code)
+    if (data?.length) return { delivery: 'sent' }
+  }
+  const latest = await loadTransaction(client, entry.id, signal, 'all')
+  if (next ? latest && sameTransactionFields(next, latest) : !latest) return { delivery: 'sent' }
+  return { delivery: 'conflict', remote: latest }
 }
 
 export async function deleteTransaction(client: SupabaseClient, id: string, status: OperationStatus = 'confirmed'): Promise<boolean> {

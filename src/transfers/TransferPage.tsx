@@ -103,7 +103,7 @@ function TransferForm({ accounts, initialStatus, isSaving, saveError, onSave }: 
   )
 }
 
-export default function TransferPage({ client, pendingTransactions }: OfflinePageProps) {
+export default function TransferPage({ client, transactionOverlay }: OfflinePageProps) {
   const [params] = useSearchParams()
   const initialStatus = params.get('plan') === '1' ? 'planned' : 'confirmed'
   const [draftId, setDraftId] = useState(() => crypto.randomUUID())
@@ -111,7 +111,7 @@ export default function TransferPage({ client, pendingTransactions }: OfflinePag
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, undefined, pendingTransactions), [client, pendingTransactions])
+  const load = useCallback((signal: AbortSignal) => loadAccountOverview(client, signal, undefined, transactionOverlay), [client, transactionOverlay])
   const { data: overview, setData: setOverview, hasError, retry } = useLoadData(load)
 
   async function handleSave(fields: TransferFields) {

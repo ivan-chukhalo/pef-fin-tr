@@ -7,6 +7,7 @@ import type { OfflinePageProps, OfflineSnapshot } from './offline/snapshot'
 import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 import type { TransactionFields } from './transactions/data'
+import type { QueueTransactionChange } from './transactions/TransactionEditorPage'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
@@ -107,10 +108,11 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness, syncFailed, retryTransactions }: {
+function ShellLayout({ snapshot, offlineReadiness, syncFailed, hasConflicts, retryTransactions }: {
   snapshot?: OfflineSnapshot
   offlineReadiness?: OfflineWorkerStatus
   syncFailed: boolean
+  hasConflicts: boolean
   retryTransactions: () => Promise<void>
 }) {
   return (
@@ -126,7 +128,13 @@ function ShellLayout({ snapshot, offlineReadiness, syncFailed, retryTransactions
           )}
           {snapshot && (
             <p role="status" className="mb-4 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Нові доходи й витрати збережуться на цьому пристрої.
+              Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Зміни доходів і витрат збережуться на цьому пристрої.
+            </p>
+          )}
+          {hasConflicts && (
+            <p role="status" className="mb-4 text-sm text-amber-200">
+              Деякі транзакції змінилися на іншому пристрої.{' '}
+              <Link to={transactions.path} className={`rounded underline underline-offset-2 ${focusClass}`}>Порівняти версії</Link>
             </p>
           )}
           {!snapshot && syncFailed && (
@@ -189,17 +197,21 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot, offlineReadiness, pendingTransactions, queueTransaction, retryTransactions }: OfflinePageProps & {
+export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, queueTransaction, queueTransactionChange, resolveTransactionConflict, retryTransactions }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
+  queueTransactionChange: QueueTransactionChange
+  resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
   retryTransactions: () => Promise<void>
 }) {
   const readOnly = !!snapshot
-  const pageProps = { client, snapshot, pendingTransactions }
+  const pageProps = { client, snapshot, transactionOverlay }
+  const syncFailed = !!(transactionOverlay?.drafts.some(({ syncState }) => syncState === 'failed') || transactionOverlay?.changes.some(({ delivery }) => delivery === 'failed'))
+  const hasConflicts = transactionOverlay?.changes.some(({ conflict }) => !!conflict) ?? false
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={pendingTransactions?.some(({ syncState }) => syncState === 'failed') ?? false} retryTransactions={retryTransactions} />}>
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} syncFailed={syncFailed} hasConflicts={hasConflicts} retryTransactions={retryTransactions} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}
@@ -218,7 +230,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
                   {path === forecast.path && <ForecastPage {...pageProps} />}
                   {path === accounts.path && <AccountsPage {...pageProps} />}
                   {path === categories.path && <CategoriesPage {...pageProps} />}
-                  {path === transactions.path && <TransactionsPage {...pageProps} />}
+                  {path === transactions.path && <TransactionsPage {...pageProps} queueTransactionChange={queueTransactionChange} resolveTransactionConflict={resolveTransactionConflict} />}
                   {path === settings.path && (
                     <div className="mt-6 space-y-4">
                       <dl className="max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
@@ -253,7 +265,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
             path="/transactions/:transactionId/edit"
             element={
               <SectionPage title="Редагувати транзакцію" showQuickAdd={!readOnly}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
+                <TransactionEditorPage {...pageProps} queueTransactionChange={queueTransactionChange} />
               </SectionPage>
             }
           />
@@ -261,7 +273,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
             path="/transactions/:transactionId/confirm"
             element={
               <SectionPage title="Підтвердити транзакцію" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming pendingTransactions={pendingTransactions} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><TransactionEditorPage client={client} confirming transactionOverlay={transactionOverlay} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -269,7 +281,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
             path={transfer.path}
             element={
               <SectionPage title={transfer.label} showQuickAdd={!readOnly}>
-                <OnlineAction readOnly={readOnly}><TransferPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><TransferPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -301,7 +313,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
             path={`${recurringPath}/new`}
             element={
               <SectionPage title="Додати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
               </SectionPage>
             }
           />
@@ -309,7 +321,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, pendingTr
             path={`${recurringPath}/:templateId/edit`}
             element={
               <SectionPage title="Редагувати шаблон" showQuickAdd={false}>
-                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} pendingTransactions={pendingTransactions} /></OnlineAction>
+                <OnlineAction readOnly={readOnly}><RecurringEditorPage client={client} transactionOverlay={transactionOverlay} /></OnlineAction>
               </SectionPage>
             }
           />

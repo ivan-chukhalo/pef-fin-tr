@@ -5,19 +5,22 @@ import { categoryColorStyle } from '../categories/color'
 import type { Category } from '../categories/data'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
+import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
 import { deleteTransaction, loadTransactionHistory, type Transaction } from './data'
 import { getTransactionLabels } from './labels'
+import TransactionConflicts from './TransactionConflicts'
+import type { QueueTransactionChange } from './TransactionEditorPage'
 
 const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const usdFormatter = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'USD' })
 
-function TransactionRow({ transaction, accountName, category, readOnly, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
+function TransactionRow({ transaction, accountName, category, canChange, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
   transaction: Transaction
   accountName: string
   category: Category | undefined
-  readOnly: boolean
+  canChange: boolean
   confirming: boolean
   isDeleting: boolean
   onConfirm: () => void
@@ -54,7 +57,7 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
         </div>
       </div>
 
-      {!readOnly && !transaction.syncState && (confirming ? (
+      {canChange && (confirming ? (
         <div className="mt-4 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
           <p className="text-sm text-rose-100">Видалити цю транзакцію?</p>
           <div className="flex flex-wrap gap-2">
@@ -74,13 +77,16 @@ function TransactionRow({ transaction, accountName, category, readOnly, confirmi
   )
 }
 
-export default function TransactionsPage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
+export default function TransactionsPage({ client, snapshot, transactionOverlay, queueTransactionChange, resolveTransactionConflict }: OfflinePageProps & {
+  queueTransactionChange: QueueTransactionChange
+  resolveTransactionConflict: (operationId: string, keepLocal: boolean) => Promise<void>
+}) {
   const [params, setParams] = useSearchParams()
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState(false)
   const deleting = useRef(false)
-  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal, snapshot, pendingTransactions), [client, snapshot, pendingTransactions])
+  const load = useCallback((signal: AbortSignal) => loadTransactionHistory(client, signal, snapshot, transactionOverlay), [client, snapshot, transactionOverlay])
   const { data, setData, hasError, retry } = useLoadData(load)
 
   const currentMonth = todayInKyiv().slice(0, 7)
@@ -100,17 +106,25 @@ export default function TransactionsPage({ client, snapshot, pendingTransactions
     setDeleteError(false)
   }
 
-  async function handleDelete(id: string) {
-    if (snapshot || deleting.current) return
+  async function handleDelete(transaction: Transaction) {
+    if (deleting.current) return
 
     deleting.current = true
     setIsDeleting(true)
     setDeleteError(false)
     try {
-      await deleteTransaction(client, id)
+      if (snapshot || transaction.syncState || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(transaction, null)
+      else {
+        try {
+          await deleteTransaction(client, transaction.id)
+        } catch (error) {
+          if (navigator.onLine && canReachSupabase()) throw error
+          await queueTransactionChange(transaction, null)
+        }
+      }
       setData((current) => current && {
         ...current,
-        transactions: current.transactions.filter((transaction) => transaction.id !== id),
+        transactions: current.transactions.filter(({ id }) => id !== transaction.id),
       })
       setConfirmingId(null)
     } catch {
@@ -134,6 +148,7 @@ export default function TransactionsPage({ client, snapshot, pendingTransactions
     .sort((first, second) => second.localeCompare(first))
   const accounts = new Map(data.accounts.map((account) => [account.id, account]))
   const categories = new Map(data.categories.map((category) => [category.id, category]))
+  const changes = new Map(transactionOverlay?.changes.map((change) => [change.id, change]))
   const filtered = data.transactions.filter((transaction) =>
     (!month || transaction.date.startsWith(`${month}-`)) &&
     (!accountId || transaction.account_id === accountId) &&
@@ -172,6 +187,7 @@ export default function TransactionsPage({ client, snapshot, pendingTransactions
       </fieldset>
 
       {deleteError && <p role="alert" className="text-sm text-rose-300">Не вдалося видалити транзакцію. Спробуйте ще раз.</p>}
+      <TransactionConflicts changes={transactionOverlay?.changes ?? []} accounts={accounts} categories={categories} onResolve={resolveTransactionConflict} />
       {filtered.length ? (
         <ul aria-label="Список транзакцій" className="grid gap-3">
           {filtered.map((transaction) => (
@@ -180,7 +196,7 @@ export default function TransactionsPage({ client, snapshot, pendingTransactions
               transaction={transaction}
               accountName={accounts.get(transaction.account_id)?.name ?? 'Рахунок'}
               category={categories.get(transaction.category_id)}
-              readOnly={!!snapshot}
+              canChange={!changes.get(transaction.id)?.attempted && !changes.get(transaction.id)?.conflict}
               confirming={confirmingId === transaction.id}
               isDeleting={isDeleting}
               onConfirm={() => {
@@ -191,7 +207,7 @@ export default function TransactionsPage({ client, snapshot, pendingTransactions
                 setConfirmingId(null)
                 setDeleteError(false)
               }}
-              onDelete={() => void handleDelete(transaction.id)}
+              onDelete={() => void handleDelete(transaction)}
             />
           ))}
         </ul>

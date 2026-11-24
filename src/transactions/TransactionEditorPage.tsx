@@ -6,29 +6,35 @@ import type { OperationStatus } from '../lib/operations'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
-import { confirmTransaction, loadLastUsdRate, loadTransaction, saveTransaction, type TransactionFields } from './data'
+import { confirmTransaction, loadLastUsdRate, loadTransaction, saveTransaction, type Transaction, type TransactionFields } from './data'
 import TransactionForm from './TransactionForm'
 
 type QueueTransaction = (id: string, fields: TransactionFields) => Promise<void>
+export type QueueTransactionChange = (original: Transaction, fields: TransactionFields | null) => Promise<void>
 
-function TransactionEditor({ client, snapshot, pendingTransactions, queueTransaction, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
+function TransactionEditor({ client, snapshot, transactionOverlay, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
+  const [original, setOriginal] = useState<Transaction | null | undefined>(undefined)
+  const [openedOffline, setOpenedOffline] = useState(!!snapshot)
   const saving = useRef(false)
   const load = useCallback(async (signal: AbortSignal) => {
     const [accountData, categories, transaction, lastUsdRate] = await Promise.all([
       transactionId
-        ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
-        : loadAccountOverview(client, signal, snapshot, pendingTransactions),
+        ? loadAccounts(client, signal, snapshot).then((accounts) => ({ accounts, changesByAccount: null }))
+        : loadAccountOverview(client, signal, snapshot, transactionOverlay),
       loadCategories(client, signal, snapshot),
-      transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all') : null,
-      loadLastUsdRate(client, signal, snapshot, pendingTransactions),
+      transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all', snapshot, transactionOverlay) : null,
+      loadLastUsdRate(client, signal, snapshot, transactionOverlay),
     ])
     return { ...accountData, categories, transaction, lastUsdRate }
-  }, [client, transactionId, confirming, snapshot, pendingTransactions])
+  }, [client, transactionId, confirming, snapshot, transactionOverlay])
   const { data, hasError, retry } = useLoadData(load)
+  if (data && original === undefined) setOriginal(data.transaction)
+  if (snapshot && !openedOffline) setOpenedOffline(true)
+  const currentChange = transactionOverlay?.changes.find(({ id }) => id === transactionId)
 
   async function handleSave(fields: TransactionFields) {
     if (saving.current) return
@@ -47,6 +53,16 @@ function TransactionEditor({ client, snapshot, pendingTransactions, queueTransac
           } catch (error) {
             if (navigator.onLine && canReachSupabase()) throw error
             await queueTransaction(draftId, fields)
+          }
+        }
+      } else if (original?.status === 'confirmed' && queueTransactionChange) {
+        if (openedOffline || original.syncState || !navigator.onLine || !canReachSupabase()) await queueTransactionChange(original, fields)
+        else {
+          try {
+            await saveTransaction(client, draftId, fields, false)
+          } catch (error) {
+            if (navigator.onLine && canReachSupabase()) throw error
+            await queueTransactionChange(original, fields)
           }
         }
       } else await saveTransaction(client, draftId, fields, !transactionId)
@@ -80,11 +96,18 @@ function TransactionEditor({ client, snapshot, pendingTransactions, queueTransac
     )
   }
 
-  const status = confirming ? 'confirmed' : data.transaction?.status ?? initialStatus
-  return <TransactionForm {...data} initialStatus={status} confirming={confirming} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+  if (snapshot && data.transaction?.status === 'planned') {
+    return <p role="status" className="mt-6 text-sm text-zinc-400">Для редагування запланованої операції потрібен інтернет.</p>
+  }
+  if (currentChange?.conflict || currentChange?.attempted) {
+    return <p role="status" className="mt-6 text-sm text-zinc-400">{currentChange.conflict ? 'Вибери версію транзакції в історії.' : 'Зачекай на завершення синхронізації попередньої зміни.'}</p>
+  }
+
+  const status = confirming ? 'confirmed' : (original ?? data.transaction)?.status ?? initialStatus
+  return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} offline={!!snapshot} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
-export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction }) {
+export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange }) {
   const { transactionId } = useParams()
   const [params] = useSearchParams()
   const initialStatus = !transactionId && params.get('plan') === '1' ? 'planned' : 'confirmed'

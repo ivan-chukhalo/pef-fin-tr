@@ -103,10 +103,10 @@ function ForecastResults({ data, today, date, transactionActions, sortBy, onSort
   )
 }
 
-export default function ForecastPage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
+export default function ForecastPage({ client, snapshot, transactionOverlay }: OfflinePageProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<OperationSort>('date')
-  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal, snapshot, pendingTransactions), [client, snapshot, pendingTransactions])
+  const load = useCallback((signal: AbortSignal) => loadForecastData(client, signal, snapshot, transactionOverlay), [client, snapshot, transactionOverlay])
   const { data, setData, hasError, retry } = useLoadData(load)
   const onTransactionChange: TransactionActions['onChange'] = (id, replacement) => {
     setData((current) => current && {

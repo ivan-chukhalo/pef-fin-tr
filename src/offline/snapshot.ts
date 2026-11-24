@@ -19,7 +19,7 @@ export type OfflineSnapshot = {
 export type OfflinePageProps = {
   client: SupabaseClient
   snapshot?: OfflineSnapshot
-  pendingTransactions?: readonly Transaction[]
+  transactionOverlay?: TransactionOverlay
 }
 
 export type QueuedTransaction = {
@@ -27,13 +27,43 @@ export type QueuedTransaction = {
   fields: TransactionFields
   createdAt: string
   amountUah: string
+  attempted?: boolean
   delivery?: 'sent' | 'failed'
 }
 
-export function mergePendingTransactions<Row extends { id: string }>(rows: Row[], pending: readonly Row[]) {
-  if (!pending.length) return rows
-  const ids = new Set(rows.map(({ id }) => id))
-  return [...rows, ...pending.filter(({ id }) => !ids.has(id))]
+export type QueuedChange = {
+  id: string
+  operationId: string
+  original: Transaction
+  base: Transaction | null
+  next: Transaction | null
+  attempted: boolean
+  delivery?: 'sent' | 'failed'
+  conflict?: { remote: Transaction | null }
+}
+
+export type TransactionOverlay = { drafts: readonly Transaction[]; changes: readonly QueuedChange[] }
+
+export function pendingTransaction(entry: QueuedTransaction): Transaction {
+  return { ...entry.fields, id: entry.id, created_at: entry.createdAt, amount_uah_kop: entry.amountUah,
+    syncState: entry.delivery === 'failed' ? 'failed' : 'pending' }
+}
+
+export function projectedChange(change: QueuedChange): Transaction | null {
+  return change.next && { ...change.next, syncState: change.conflict ? 'conflict'
+    : change.delivery === 'failed' ? 'failed' : 'pending' }
+}
+
+export function mergePendingTransactions<Row extends { id: string }>(rows: Row[], overlay?: TransactionOverlay): (Row | Transaction)[] {
+  if (!overlay) return rows
+  const merged = new Map<string, Row | Transaction>(rows.map((row) => [row.id, row]))
+  for (const draft of overlay.drafts) if (!merged.has(draft.id)) merged.set(draft.id, draft)
+  for (const change of overlay.changes) {
+    const local = projectedChange(change)
+    if (local) merged.set(change.id, local)
+    else merged.delete(change.id)
+  }
+  return [...merged.values()]
 }
 
 export async function downloadSnapshot(client: SupabaseClient, userId: string, signal: AbortSignal): Promise<OfflineSnapshot> {
@@ -46,9 +76,10 @@ export async function downloadSnapshot(client: SupabaseClient, userId: string, s
   return data as unknown as OfflineSnapshot
 }
 
-type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; revision: number }
+type LocalFinance = { snapshot: OfflineSnapshot | null; queue: QueuedTransaction[]; changes: QueuedChange[]; revision: number }
 type StoredSnapshot = { key: string; snapshot: OfflineSnapshot | null }
 type StoredQueue = { key: string } & Pick<LocalFinance, 'queue' | 'revision'>
+type StoredChanges = { key: string; changes: QueuedChange[] }
 
 async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<Result>) {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -72,15 +103,18 @@ async function withSnapshotStore<Result>(mode: IDBTransactionMode, operation: (s
 async function accessLocalFinance(key: string, change?: (current: LocalFinance) => LocalFinance, signal?: AbortSignal) {
   // An older open PWA may still replace its snapshot record. Keep the queue at a separate key.
   const queueKey = `${key}:queue`
-  let result: LocalFinance = { snapshot: null, queue: [], revision: 0 }
+  const changesKey = `${key}:changes`
+  let result: LocalFinance = { snapshot: null, queue: [], changes: [], revision: 0 }
   let failure: unknown
   await withSnapshotStore(change ? 'readwrite' : 'readonly', (store) => {
     const snapshotRequest = store.get(key)
     const queueRequest = store.get(queueKey)
-    queueRequest.onsuccess = () => {
+    const changesRequest = store.get(changesKey)
+    changesRequest.onsuccess = () => {
       const storedSnapshot: StoredSnapshot | undefined = snapshotRequest.result
       const storedQueue: StoredQueue | undefined = queueRequest.result
-      const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], revision: storedQueue?.revision ?? 0 }
+      const storedChanges: StoredChanges | undefined = changesRequest.result
+      const current = { snapshot: storedSnapshot?.snapshot ?? null, queue: storedQueue?.queue ?? [], changes: storedChanges?.changes ?? [], revision: storedQueue?.revision ?? 0 }
       result = current
       if (!change || signal?.aborted) return
       try {
@@ -89,12 +123,13 @@ async function accessLocalFinance(key: string, change?: (current: LocalFinance) 
         result = { ...next, revision: current.revision + 1 }
         if (next.snapshot !== current.snapshot) store.put({ key, snapshot: next.snapshot } satisfies StoredSnapshot)
         store.put({ key: queueKey, queue: next.queue, revision: result.revision } satisfies StoredQueue)
+        if (next.changes !== current.changes) store.put({ key: changesKey, changes: next.changes } satisfies StoredChanges)
       } catch (error) {
         failure = error
         store.transaction.abort()
       }
     }
-    return queueRequest
+    return changesRequest
   }).catch((error) => { throw failure ?? error })
   return result
 }

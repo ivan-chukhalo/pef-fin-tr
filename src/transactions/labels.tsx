@@ -10,7 +10,8 @@ export function getTransactionLabels(transaction: Pick<Transaction, 'type' | 'pu
     typeLabel: income ? 'Дохід' : 'Витрата',
     syncLabel: transaction.syncState && (
       <span className="text-amber-200">
-        {transaction.syncState === 'failed' ? 'Не вдалося синхронізувати' : 'Очікує синхронізації'}
+        {transaction.syncState === 'failed' ? 'Не вдалося синхронізувати'
+          : transaction.syncState === 'conflict' ? 'Потрібно вибрати версію' : 'Очікує синхронізації'}
       </span>
     ),
   }

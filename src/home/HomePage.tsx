@@ -11,14 +11,14 @@ import { getTransactionLabels } from '../transactions/labels'
 const cardClass = 'min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900'
 const linkClass = 'inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
-export default function HomePage({ client, snapshot, pendingTransactions }: OfflinePageProps) {
+export default function HomePage({ client, snapshot, transactionOverlay }: OfflinePageProps) {
   const load = useCallback(async (signal: AbortSignal) => {
     const [history, transfers] = await Promise.all([
-      loadTransactionHistory(client, signal, snapshot, pendingTransactions),
+      loadTransactionHistory(client, signal, snapshot, transactionOverlay),
       loadTransferAmounts(client, signal, snapshot),
     ])
     return { ...history, changesByAccount: getAccountBalanceChanges(history.transactions, transfers) }
-  }, [client, snapshot, pendingTransactions])
+  }, [client, snapshot, transactionOverlay])
   const { data, hasError, retry } = useLoadData(load)
 
   if (!data) {
