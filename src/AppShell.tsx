@@ -4,6 +4,7 @@ import AccountsPage from './accounts/AccountsPage'
 import HomePage from './home/HomePage'
 import { formatDateTimeInKyiv } from './lib/dates'
 import type { OfflinePageProps, OfflineSnapshot } from './offline/snapshot'
+import type { OfflineWorkerStatus } from './offline/useOfflineWorker'
 import { recurringPath } from './recurring/data'
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
@@ -101,7 +102,13 @@ function MobileNavigation({ readOnly }: { readOnly: boolean }) {
   )
 }
 
-function ShellLayout({ snapshot }: { snapshot?: OfflineSnapshot }) {
+const readinessText = {
+  preparing: 'Готуємо офлайн-доступ…',
+  ready: 'Офлайн-доступ готовий',
+  failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
+} satisfies Record<OfflineWorkerStatus, string>
+
+function ShellLayout({ snapshot, offlineReadiness }: { snapshot?: OfflineSnapshot; offlineReadiness?: OfflineWorkerStatus }) {
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100 md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
       <DesktopNavigation />
@@ -110,6 +117,9 @@ function ShellLayout({ snapshot }: { snapshot?: OfflineSnapshot }) {
           <BrandLink />
         </header>
         <main className="mx-auto max-w-6xl px-4 pt-7 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:px-6 md:px-10 md:py-10">
+          {offlineReadiness && (
+            <p role="status" className="mb-2 text-xs text-zinc-400">{readinessText[offlineReadiness]}</p>
+          )}
           {snapshot && (
             <p role="status" className="mb-4 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
               Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Для внесення змін потрібен інтернет.
@@ -169,13 +179,13 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot }: OfflinePageProps) {
+export default function AppShell({ client, snapshot, offlineReadiness }: OfflinePageProps & { offlineReadiness?: OfflineWorkerStatus }) {
   const readOnly = !!snapshot
   const pageProps = { client, snapshot }
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} />}>
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} />}>
           {sections.map(({ path, label }) => (
             <Route
               key={path}

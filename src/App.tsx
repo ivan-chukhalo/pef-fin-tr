@@ -2,12 +2,20 @@ import AppShell from './AppShell'
 import LoginForm from './LoginForm'
 import { supabase } from './lib/supabase'
 import { useOfflineData } from './offline/useOfflineData'
+import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
   const { online, userId, snapshot } = useOfflineData(supabase)
+  const worker = useOfflineWorker()
 
   if (supabase && userId && (online || snapshot)) {
-    return <AppShell key={userId} client={supabase} snapshot={online ? undefined : snapshot ?? undefined} />
+    const readiness = worker === 'ready' && !snapshot ? 'preparing' : worker
+    return <AppShell
+      key={userId}
+      client={supabase}
+      snapshot={online ? undefined : snapshot ?? undefined}
+      offlineReadiness={online && import.meta.env.PROD ? readiness : undefined}
+    />
   }
 
   return (

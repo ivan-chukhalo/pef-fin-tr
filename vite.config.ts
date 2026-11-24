@@ -30,7 +30,7 @@ export default defineConfig(({ command, mode }) => ({
     tailwindcss(),
     VitePWA({
       manifest: false,
-      injectRegister: 'script-defer',
+      injectRegister: false,
       registerType: 'prompt',
       workbox: {
         globPatterns: ['**/*.{html,js,css,png,webmanifest}'],
