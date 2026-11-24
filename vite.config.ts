@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
@@ -25,6 +26,14 @@ function serveMonobank(env: Record<string, string>): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => ({
+  build: {
+    rolldownOptions: {
+      input: {
+        index: resolve(import.meta.dirname, 'index.html'),
+        update: resolve(import.meta.dirname, 'update.html'),
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -34,6 +43,7 @@ export default defineConfig(({ command, mode }) => ({
       registerType: 'prompt',
       workbox: {
         globPatterns: ['**/*.{html,js,css,png,webmanifest}'],
+        globIgnores: ['update.html', 'assets/update-*.js'],
         inlineWorkboxRuntime: true,
         // HashRouter uses the entry document for every app route.
         navigateFallbackAllowlist: [/^\/(?:index\.html)?(?:\?|$)/],

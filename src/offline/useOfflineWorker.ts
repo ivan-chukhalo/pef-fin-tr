@@ -20,7 +20,7 @@ export function useOfflineWorker(): OfflineWorkerStatus {
           update('failed')
           return
         }
-        const registration = await workers.register(`${import.meta.env.BASE_URL}sw.js`)
+        const registration = await workers.register(`${import.meta.env.BASE_URL}sw.js`, { updateViaCache: 'none' })
         if (signal.aborted) return
 
         const watch = () => {
@@ -36,6 +36,17 @@ export function useOfflineWorker(): OfflineWorkerStatus {
         registration.addEventListener('updatefound', watch, { signal })
         watch()
         void workers.ready.then(() => update('ready'))
+
+        const checkForUpdate = () => {
+          if (navigator.onLine && registration.active && !registration.installing) {
+            void registration.update().catch(() => {})
+          }
+        }
+        window.addEventListener('online', checkForUpdate, { signal })
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') checkForUpdate()
+        }, { signal })
+        checkForUpdate()
       } catch {
         update('failed')
       }

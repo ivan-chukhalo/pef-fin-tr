@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <title>Оновлення · Персональні фінанси</title>
+  </head>
+  <body class="grid min-h-dvh place-items-center bg-zinc-950 px-4 py-8 text-zinc-100">
+    <main class="w-full max-w-sm space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+      <h1 class="text-2xl font-semibold tracking-tight">Оновлення застосунку</h1>
+      <p class="text-sm text-zinc-300">Збережи відкриті форми у «Персональних фінансах», а потім натисни «Оновити».</p>
+      <p id="update-status" role="status" class="text-sm text-zinc-300" hidden></p>
+      <div class="flex flex-wrap items-center gap-4">
+        <button id="update-button" type="button" class="min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60">Оновити</button>
+        <a href="/" class="inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-zinc-300 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300">До застосунку</a>
+      </div>
+    </main>
+    <script type="module" src="/src/offline/updatePage.ts"></script>
+  </body>
+</html>
