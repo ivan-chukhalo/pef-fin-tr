@@ -22,6 +22,7 @@ const ForecastPage = lazy(() => import('./forecast/ForecastPage'))
 const BackupDownload = lazy(() => import('./settings/BackupDownload'))
 const BackupRestore = lazy(() => import('./settings/BackupRestore'))
 const MonobankPage = lazy(() => import('./monobank/MonobankPage'))
+const CsvImportPage = lazy(() => import('./csv/CsvImportPage'))
 
 const home = { path: '/', label: 'Головна' }
 const transactions = { path: '/transactions', label: 'Транзакції' }
@@ -42,6 +43,7 @@ const addTransaction = { path: '/transactions/new', label: 'Додати тра�
 const transfer = { path: '/transactions/transfer', label: 'Переказ' }
 const planned = { path: '/transactions/planned', label: 'Заплановані' }
 const monobank = { path: '/transactions/monobank', label: 'Підтягнути з monobank' }
+const csvImport = { path: '/transactions/import-csv', label: 'Імпортувати CSV' }
 
 const focusClass = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const sidebarLinkClass = `flex min-h-11 items-center rounded-xl px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 aria-[current=page]:bg-emerald-300/10 aria-[current=page]:text-emerald-200 ${focusClass}`
@@ -258,7 +260,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
               element={
                 <SectionPage
                   title={label}
-                  action={path === transactions.path && (readOnly ? [planned, transfer] : [planned, transfer, monobank]).map(({ path, label }) => (
+                  action={path === transactions.path && (readOnly ? [planned, transfer] : [planned, transfer, monobank, csvImport]).map(({ path, label }) => (
                     <Link key={path} to={path} className={`inline-flex h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 ${focusClass}`}>
                       {label}
                     </Link>
@@ -347,6 +349,16 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
             element={
               <SectionPage title="Імпорт із monobank" showQuickAdd={false}>
                 <OnlineAction readOnly={readOnly}><MonobankPage client={client} /></OnlineAction>
+              </SectionPage>
+            }
+          />
+          <Route
+            path={csvImport.path}
+            element={
+              <SectionPage title={csvImport.label} showQuickAdd={false}>
+                <OnlineAction readOnly={readOnly}>
+                  <CsvImportPage client={client} transactionOverlay={transactionOverlay} pendingTransfers={pendingTransfers} />
+                </OnlineAction>
               </SectionPage>
             }
           />
