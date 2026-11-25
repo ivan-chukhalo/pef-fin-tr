@@ -2,12 +2,13 @@ import DateInput from './DateInput'
 import { nextCalendarDate, todayInKyiv } from './dates'
 import { getPlanningDate, type OperationStatus } from './operations'
 
-export default function OperationDateField({ id, fieldClass, existingDate, status, onStatusChange, label = 'Дата', planningAvailable = true, lastServerDate }: {
+export default function OperationDateField({ id, fieldClass, existingDate, status, onStatusChange, onDateChange, label = 'Дата', planningAvailable = true, lastServerDate }: {
   id: string
   fieldClass: string
   existingDate?: string
   status: OperationStatus
   onStatusChange: (status: OperationStatus) => void
+  onDateChange?: (date: string) => void
   label?: string
   planningAvailable?: boolean
   lastServerDate?: string
@@ -28,11 +29,16 @@ export default function OperationDateField({ id, fieldClass, existingDate, statu
         defaultValue={existingDate ?? (planned ? tomorrow : today)}
         min={planned ? earliestPlannedDate : undefined}
         max={planned ? undefined : today}
+        onDateChange={onDateChange}
         required
       />
       {!existingDate && (planningAvailable || planned) && (
         <label className="flex min-h-10 items-center gap-2 text-sm text-zinc-300">
-          <input type="checkbox" className="size-4 accent-emerald-300" checked={planned} onChange={(event) => onStatusChange(event.target.checked ? 'planned' : 'confirmed')} />
+          <input type="checkbox" className="size-4 accent-emerald-300" checked={planned} onChange={(event) => {
+            const nextPlanned = event.target.checked
+            onStatusChange(nextPlanned ? 'planned' : 'confirmed')
+            onDateChange?.(nextPlanned ? tomorrow : today)
+          }} />
           Запланувати на майбутнє
         </label>
       )}

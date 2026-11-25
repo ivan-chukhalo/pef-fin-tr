@@ -5,13 +5,14 @@ import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
 import DateInput from '../lib/DateInput'
-import { isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
+import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
-import { getOperationDateError, type OperationStatus } from '../lib/operations'
+import { getOperationDateError, getPlanningDate, type OperationStatus } from '../lib/operations'
 import { frequencyLabels, recurringPath, type RecurringSchedule, type RecurringTemplate, type RecurringTemplateFields } from '../recurring/data'
 import type { Currency, TransactionFields } from './data'
 import { convertToUah, parseExchangeRate } from './exchange'
+import { useNbuRate } from './useNbuRate'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const invalidSelectionMessage = 'Оберіть рахунок і категорію.'
@@ -33,6 +34,7 @@ type TransactionFormProps = {
   isSaving: boolean
   saveError: boolean
   lastServerDate?: string
+  offline?: boolean
 } & ({
   recurringTemplate?: never
   transaction: TransactionFields | null
@@ -68,9 +70,33 @@ export default function TransactionForm(props: TransactionFormProps) {
   const [status, setStatus] = useState(recurring ? 'planned' : props.initialStatus)
   const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
   const [amountInput, setAmountInput] = useState(details ? formatBalanceInput(BigInt(details.amount_original_kop)) : '')
-  const [rateInput, setRateInput] = useState((details?.currency === 'USD' ? details.rate : lastUsdRate).replace('.', ','))
+  const [enteredRate, setEnteredRate] = useState<string | null>(null)
+  const [initialToday] = useState(todayInKyiv)
+  const [operationDate, setOperationDate] = useState(() => {
+    if (recurring) return template?.start_date ?? nextCalendarDate(initialToday)
+    if (confirming) return initialToday
+    return transaction?.date ?? (status === 'planned' ? nextCalendarDate(getPlanningDate(props.lastServerDate)) : initialToday)
+  })
   const [transactionName, setTransactionName] = useState(details?.purchase_name ?? '')
   const [errorMessage, setErrorMessage] = useState('')
+
+  const savedRate = details?.currency === 'USD' ? details.rate : ''
+  const suggestRate = currency === 'USD' && (confirming || !savedRate)
+  const today = todayInKyiv()
+  const rateDate = suggestRate && operationDate ? (operationDate > today ? today : operationDate) : null
+  const { quote, loading: loadingRate } = useNbuRate(rateDate, !props.offline)
+  const suggestedRate = (quote?.rate ?? (lastUsdRate || savedRate)).replace('.', ',')
+  const defaultRate = suggestRate ? (loadingRate ? '' : suggestedRate) : savedRate.replace('.', ',')
+  const rateInput = enteredRate ?? defaultRate
+  let rateHint = ''
+  if (suggestRate && !enteredRate) {
+    if (loadingRate) rateHint = 'Завантажуємо курс НБУ…'
+    else if (quote) {
+      const source = quote.date === operationDate ? 'Курс НБУ' : 'Орієнтир — курс НБУ'
+      rateHint = `${source} за ${formatDate(quote.date)}.`
+    } else if (lastUsdRate) rateHint = 'Останній використаний курс.'
+    else if (savedRate) rateHint = 'Курс із запланованої операції.'
+  }
 
   const availableCategories = getAvailableCategories(categories, type)
   const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === details?.account_id)
@@ -169,7 +195,8 @@ export default function TransactionForm(props: TransactionFormProps) {
         {recurring ? (
           <>
             <Field id="transaction-date" label="Дата першої операції">
-              <DateInput id="transaction-date" name="date" className={fieldClass} defaultValue={template?.start_date ?? nextCalendarDate(todayInKyiv())} required />
+              <DateInput id="transaction-date" name="date" className={fieldClass}
+                defaultValue={template?.start_date ?? nextCalendarDate(initialToday)} onDateChange={setOperationDate} required />
             </Field>
             <Field id="recurring-frequency" label="Частота">
               <select id="recurring-frequency" name="frequency" className={fieldClass} defaultValue={template?.frequency ?? 'monthly'}>
@@ -184,9 +211,10 @@ export default function TransactionForm(props: TransactionFormProps) {
           <OperationDateField
             id="transaction-date"
             fieldClass={fieldClass}
-            existingDate={confirming ? todayInKyiv() : transaction?.date}
+            existingDate={confirming ? initialToday : transaction?.date}
             status={status}
             onStatusChange={setStatus}
+            onDateChange={setOperationDate}
             label={confirming ? 'Фактична дата' : 'Дата'}
             lastServerDate={props.lastServerDate}
           />
@@ -203,7 +231,11 @@ export default function TransactionForm(props: TransactionFormProps) {
         {currency === 'USD' && (
           <>
             <Field id="transaction-rate" label="Курс, грн за 1 USD">
-              <input id="transaction-rate" className={fieldClass} inputMode="decimal" value={rateInput} onChange={(event) => setRateInput(event.target.value)} required />
+              <input id="transaction-rate" className={fieldClass} inputMode="decimal" value={rateInput}
+                placeholder={suggestRate ? suggestedRate : savedRate.replace('.', ',')}
+                aria-describedby={rateHint ? 'transaction-rate-hint' : undefined}
+                onChange={(event) => setEnteredRate(event.target.value)} required />
+              {rateHint && <p id="transaction-rate-hint" role="status" className="text-xs font-normal text-zinc-400">{rateHint}</p>}
             </Field>
             <div className="grid min-w-0 gap-2 text-sm font-medium">
               Сума в гривнях

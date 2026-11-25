@@ -1,15 +1,21 @@
+import { useEffect } from 'react'
 import AppShell from './AppShell'
 import LoginForm from './LoginForm'
 import { todayInKyiv } from './lib/dates'
 import { supabase } from './lib/supabase'
 import { useOfflineData } from './offline/useOfflineData'
 import { useOfflineWorker } from './offline/useOfflineWorker'
+import { loadNbuRate } from './transactions/nbuRate'
 
 function App() {
   const { online, userId, snapshot, transactionOverlay, pendingTransfers, transferChanges, pendingChanges, syncComplete,
     queueTransaction, queueTransfer, queueTransferChange, discardTransferChange,
     resolveRejectedTransfer, queueTransactionChange, resolveTransactionChange, retrySync } = useOfflineData(supabase)
   const worker = useOfflineWorker()
+
+  useEffect(() => {
+    if (online && userId) void loadNbuRate(todayInKyiv())
+  }, [online, userId])
 
   if (supabase && userId && (online || snapshot)) {
     const readiness = worker === 'ready' && !snapshot ? 'preparing' : worker
