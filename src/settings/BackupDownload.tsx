@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { useRef, useState } from 'react'
 import { formatDate, todayInKyiv } from '../lib/dates'
+import { downloadFile } from '../lib/download'
 import { isBackup } from './backup'
 
 export default function BackupDownload({ client }: { client: SupabaseClient }) {
@@ -17,17 +18,7 @@ export default function BackupDownload({ client }: { client: SupabaseClient }) {
       if (error || !isBackup(data)) throw new Error('Backup unavailable')
 
       const blob = new Blob([JSON.stringify(data, null, 2), '\n'], { type: 'application/json;charset=utf-8' })
-      const link = document.createElement('a')
-      const url = URL.createObjectURL(blob)
-      link.href = url
-      link.download = `pef-fin-tr-${formatDate(todayInKyiv(new Date(data.exported_at)))}.json`
-      document.body.append(link)
-      try {
-        link.click()
-      } finally {
-        link.remove()
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
-      }
+      downloadFile(blob, `pef-fin-tr-${formatDate(todayInKyiv(new Date(data.exported_at)))}.json`)
       setStatus('ready')
     } catch {
       setStatus('error')

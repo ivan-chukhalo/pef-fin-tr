@@ -3,7 +3,9 @@ import { useCallback, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
 import type { Category } from '../categories/data'
+import { createTransactionsCsv } from '../csv/exportTransactions'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
+import { downloadFile } from '../lib/download'
 import { formatKopecks } from '../lib/money'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
@@ -155,6 +157,12 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
     (!categoryId || transaction.category_id === categoryId),
   )
 
+  function exportCsv() {
+    const csv = createTransactionsCsv(filtered, accounts, categories)
+    const filename = `pef-fin-tr-transactions-${formatDate(todayInKyiv())}.csv`
+    downloadFile(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename)
+  }
+
   return (
     <div className="mt-6 space-y-5">
       <fieldset className="grid gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:grid-cols-3" disabled={isDeleting}>
@@ -184,6 +192,10 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
             </optgroup>
           </select>
         </div>
+        <button type="button" className={`${buttonClass} w-fit sm:col-span-3 sm:justify-self-end`}
+          disabled={!filtered.length} onClick={exportCsv}>
+          Завантажити CSV
+        </button>
       </fieldset>
 
       {deleteError && <p role="alert" className="text-sm text-rose-300">Не вдалося видалити транзакцію. Спробуйте ще раз.</p>}
