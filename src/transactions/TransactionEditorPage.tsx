@@ -12,7 +12,14 @@ import TransactionForm from './TransactionForm'
 type QueueTransaction = (id: string, fields: TransactionFields) => Promise<void>
 export type QueueTransactionChange = (original: Transaction, fields: TransactionFields | null) => Promise<void>
 
-function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransfers, lastServerDate, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming }: OfflinePageProps & { queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange; transactionId?: string; initialStatus: OperationStatus; confirming: boolean }) {
+function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransfers, lastServerDate, queueTransaction, queueTransactionChange, transactionId, initialStatus, confirming, afterSavePath }: OfflinePageProps & {
+  queueTransaction?: QueueTransaction
+  queueTransactionChange?: QueueTransactionChange
+  transactionId?: string
+  initialStatus: OperationStatus
+  confirming: boolean
+  afterSavePath?: string
+}) {
   const navigate = useNavigate()
   const [draftId] = useState(() => transactionId ?? crypto.randomUUID())
   const [isSaving, setIsSaving] = useState(false)
@@ -77,7 +84,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
         }
       } else await saveTransaction(client, draftId, fields, !transactionId)
       const destination = fields.status === 'planned' ? '/transactions/planned' : `/transactions?month=${date.slice(0, 7)}`
-      navigate(destination, { replace: true })
+      navigate(afterSavePath ?? destination, { replace: true })
     } catch {
       setSaveError(true)
     } finally {
@@ -118,5 +125,7 @@ export default function TransactionEditorPage({ confirming = false, ...props }: 
   const { transactionId } = useParams()
   const [params] = useSearchParams()
   const initialStatus = !transactionId && params.get('plan') === '1' ? 'planned' : 'confirmed'
-  return <TransactionEditor key={confirming ? `confirm-${transactionId}` : transactionId ?? initialStatus} {...props} transactionId={transactionId} initialStatus={initialStatus} confirming={confirming} />
+  const afterSavePath = confirming && params.get('from') === 'reminders' ? '/' : undefined
+  return <TransactionEditor key={confirming ? `confirm-${transactionId}` : transactionId ?? initialStatus} {...props}
+    transactionId={transactionId} initialStatus={initialStatus} confirming={confirming} afterSavePath={afterSavePath} />
 }

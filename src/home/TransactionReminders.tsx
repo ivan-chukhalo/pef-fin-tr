@@ -81,7 +81,7 @@ export default function TransactionReminders({ client, snapshot, transactionOver
                         {formatKopecks(income ? amount : -amount)}
                       </span>
                       {transaction.syncState !== 'conflict' && (
-                        <Link to={`/transactions/${transaction.id}/confirm`} className={linkClass}
+                        <Link to={`/transactions/${transaction.id}/confirm?from=reminders`} className={linkClass}
                           aria-label={`Підтвердити «${title}»`}>Підтвердити</Link>
                       )}
                     </div>
