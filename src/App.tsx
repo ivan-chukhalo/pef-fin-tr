@@ -6,7 +6,7 @@ import { useOfflineData } from './offline/useOfflineData'
 import { useOfflineWorker } from './offline/useOfflineWorker'
 
 function App() {
-  const { online, userId, snapshot, transactionOverlay, pendingTransfers, transferChanges,
+  const { online, userId, snapshot, transactionOverlay, pendingTransfers, transferChanges, pendingChanges, syncComplete,
     queueTransaction, queueTransfer, queueTransferChange, discardTransferChange,
     resolveRejectedTransfer, queueTransactionChange, resolveTransactionChange, retrySync } = useOfflineData(supabase)
   const worker = useOfflineWorker()
@@ -20,6 +20,8 @@ function App() {
       transactionOverlay={transactionOverlay}
       pendingTransfers={pendingTransfers}
       transferChanges={transferChanges}
+      pendingChanges={pendingChanges}
+      syncComplete={syncComplete}
       queueTransaction={queueTransaction}
       queueTransfer={queueTransfer}
       queueTransferChange={queueTransferChange}

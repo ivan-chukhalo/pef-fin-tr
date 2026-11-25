@@ -109,15 +109,28 @@ const readinessText = {
   failed: 'Не вдалося підготувати офлайн-доступ. Онови сторінку з інтернетом.',
 } satisfies Record<OfflineWorkerStatus, string>
 
-function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfers, hasRejectedConfirmations, hasConflicts, retrySync }: {
+const changeCountFormat = new Intl.NumberFormat('uk-UA')
+const changeCountPlural = new Intl.PluralRules('uk-UA')
+
+function queueStatus(pendingChanges: number, syncComplete: boolean): string {
+  if (!pendingChanges) return syncComplete ? 'Усі зміни синхронізовано' : ''
+  const form = changeCountPlural.select(pendingChanges)
+  const changes = form === 'one' ? 'зміна' : form === 'few' ? 'зміни' : 'змін'
+  return `${changeCountFormat.format(pendingChanges)} ${changes} у черзі`
+}
+
+function ShellLayout({ snapshot, offlineReadiness, pendingChanges, syncComplete, canRetry, hasRejectedTransfers, hasRejectedConfirmations, hasConflicts, retrySync }: {
   snapshot?: OfflineSnapshot
   offlineReadiness?: OfflineWorkerStatus
+  pendingChanges: number
+  syncComplete: boolean
   canRetry: boolean
   hasRejectedTransfers: boolean
   hasRejectedConfirmations: boolean
   hasConflicts: boolean
   retrySync: () => Promise<void>
 }) {
+  const syncStatus = queueStatus(pendingChanges, syncComplete)
   return (
     <div className="min-h-dvh bg-zinc-950 text-zinc-100 md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
       <DesktopNavigation />
@@ -134,6 +147,9 @@ function ShellLayout({ snapshot, offlineReadiness, canRetry, hasRejectedTransfer
               Офлайн · Дані станом на <time dateTime={snapshot.exported_at}>{formatDateTimeInKyiv(snapshot.exported_at)}</time>. Доходи, витрати й перекази збережуться на цьому пристрої.
             </p>
           )}
+          <div role="status">
+            {syncStatus && <p className={`mb-4 text-sm ${syncComplete ? 'text-emerald-200' : 'text-zinc-300'}`}>{syncStatus}</p>}
+          </div>
           {hasConflicts && (
             <p role="status" className="mb-4 text-sm text-amber-200">
               Деякі транзакції змінилися на іншому пристрої.{' '}
@@ -206,10 +222,12 @@ function OnlineAction({ readOnly, children }: { readOnly: boolean; children: Rea
   )
 }
 
-export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers, transferChanges,
+export default function AppShell({ client, snapshot, offlineReadiness, transactionOverlay, pendingTransfers, transferChanges, pendingChanges, syncComplete,
   queueTransaction, queueTransfer, queueTransferChange, discardTransferChange, resolveRejectedTransfer,
   lastServerDate, queueTransactionChange, resolveTransactionChange, retrySync }: OfflinePageProps & {
   offlineReadiness?: OfflineWorkerStatus
+  pendingChanges: number
+  syncComplete: boolean
   queueTransaction: (id: string, fields: TransactionFields) => Promise<void>
   queueTransfer: QueueTransfer
   queueTransferChange: QueueTransferChange
@@ -231,7 +249,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
   return (
     <HashRouter>
       <Routes>
-        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} canRetry={canRetry}
+        <Route element={<ShellLayout snapshot={snapshot} offlineReadiness={offlineReadiness} pendingChanges={pendingChanges} syncComplete={syncComplete} canRetry={canRetry}
           hasRejectedTransfers={hasRejectedTransfers} hasRejectedConfirmations={hasRejectedConfirmations} hasConflicts={hasConflicts} retrySync={retrySync} />}>
           {sections.map(({ path, label }) => (
             <Route
