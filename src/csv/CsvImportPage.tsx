@@ -3,9 +3,10 @@ import { useCallback, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
 import CreateCategoryDialog from '../categories/CreateCategoryDialog'
+import CreateSubcategoryDialog from '../categories/CreateSubcategoryDialog'
 import { getAvailableCategories, type Category } from '../categories/data'
 import SubcategorySelect from '../categories/SubcategorySelect'
-import { getSubcategoryId, type Subcategory } from '../categories/subcategories'
+import { defaultSubcategoryId, getSubcategoryId, getSubcategoryNameError, type Subcategory } from '../categories/subcategories'
 import { formatDate } from '../lib/dates'
 import { formatBalanceInput, formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -17,6 +18,7 @@ import { readCsvFile, type CsvFile } from './parse'
 const fieldClass = 'mt-1 min-h-11 w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300/30'
 const buttonClass = 'inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const submitClass = 'min-h-11 rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
+const createButtonClass = 'min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const rowsPerPage = 25
 
 export default function CsvImportPage({ client, transactionOverlay, pendingTransfers }: Pick<OfflinePageProps, 'client' | 'transactionOverlay' | 'pendingTransfers'>) {
@@ -143,6 +145,9 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
           onCategoryCreated={(category) => setData((current) => current && {
             ...current,
             categories: [...current.categories.filter(({ id }) => id !== category.id), category],
+          })} onSubcategoryCreated={(subcategory) => setData((current) => current && {
+            ...current,
+            subcategories: [...current.subcategories.filter(({ id }) => id !== subcategory.id), subcategory],
           })} />
       )}
     </div>
@@ -151,8 +156,9 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
 
 type EditableRow = Extract<CsvRow, { transaction: CsvTransaction }> & { selected: boolean }
 type PreviewRow = Extract<CsvRow, { error: string }> | EditableRow
+type Creation = { kind: 'category'; row: EditableRow } | { kind: 'subcategory'; row: EditableRow; category: Category }
 
-function CsvPreview({ client, account, categories, subcategories, rows, saving, setSaving, onCategoryCreated }: {
+function CsvPreview({ client, account, categories, subcategories, rows, saving, setSaving, onCategoryCreated, onSubcategoryCreated }: {
   client: SupabaseClient
   account: { id: string; name: string }
   categories: Category[]
@@ -161,6 +167,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
   saving: boolean
   setSaving: (value: boolean) => void
   onCategoryCreated: (category: Category) => void
+  onSubcategoryCreated: (subcategory: Subcategory) => void
 }) {
   const [entries, setEntries] = useState<PreviewRow[]>(() => rows.map((row) =>
     'error' in row ? row : { ...row, selected: !row.existing && !row.possibleMatch },
@@ -168,7 +175,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
   const [page, setPage] = useState(1)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [categoryDraft, setCategoryDraft] = useState<EditableRow | null>(null)
+  const [creation, setCreation] = useState<Creation | null>(null)
   const options = { income: getAvailableCategories(categories, 'income'), expense: getAvailableCategories(categories, 'expense') }
   const editable = entries.filter((row): row is EditableRow => 'transaction' in row && !row.existing)
   const selected = editable.filter((row) => row.selected)
@@ -255,7 +262,8 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
                 ? <p className="text-sm text-rose-300">Рядок {row.line}. {row.error}</p>
                 : <CsvPreviewRow row={row} categories={options[row.transaction.type]} subcategories={subcategories}
                     onCategoryChange={(id) => updateEntry(row.line, (current) => assignCategory(current, id))}
-                    onAddCategory={() => setCategoryDraft(row)}
+                    onAddCategory={() => setCreation({ kind: 'category', row })}
+                    onAddSubcategory={(category) => setCreation({ kind: 'subcategory', row, category })}
                     onChange={(update) => updateEntry(row.line, update)} />}
             </li>
           ))}
@@ -286,25 +294,36 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
   return (
     <>
       {form}
-      {categoryDraft && (
-        <CreateCategoryDialog client={client} type={categoryDraft.transaction.type}
-          initialName={categoryDraft.transaction.category_id ? '' : categoryDraft.categoryName}
-          onCancel={() => setCategoryDraft(null)} onCreated={(category) => {
+      {creation?.kind === 'category' && (
+        <CreateCategoryDialog client={client} type={creation.row.transaction.type}
+          initialName={creation.row.transaction.category_id ? '' : creation.row.categoryName}
+          onCancel={() => setCreation(null)} onCreated={(category) => {
             onCategoryCreated(category)
-            updateEntry(categoryDraft.line, (row) => assignCategory(row, category.id))
-            setCategoryDraft(null)
+            updateEntry(creation.row.line, (row) => assignCategory(row, category.id))
+            setCreation(null)
+          }} />
+      )}
+      {creation?.kind === 'subcategory' && (
+        <CreateSubcategoryDialog client={client} category={creation.category} subcategories={subcategories}
+          initialName={getSubcategoryId(creation.row.transaction.subcategory_id) === defaultSubcategoryId &&
+            !getSubcategoryNameError(creation.row.subcategoryName, subcategories, creation.category.id) ? creation.row.subcategoryName : ''}
+          onCancel={() => setCreation(null)} onCreated={(subcategory) => {
+            onSubcategoryCreated(subcategory)
+            updateEntry(creation.row.line, (row) => ({ ...row, transaction: { ...row.transaction, subcategory_id: subcategory.id } }))
+            setCreation(null)
           }} />
       )}
     </>
   )
 }
 
-function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onAddCategory, onChange }: {
+function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onAddCategory, onAddSubcategory, onChange }: {
   row: EditableRow
   categories: Category[]
   subcategories: Subcategory[]
   onCategoryChange: (id: string) => void
   onAddCategory: () => void
+  onAddSubcategory: (category: Category) => void
   onChange: (update: (row: EditableRow) => EditableRow) => void
 }) {
   const { transaction, line } = row
@@ -350,16 +369,20 @@ function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onAdd
                   {categories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
                 </select>
               </label>
-              <button type="button" className="min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              <button type="button" className={createButtonClass}
                 aria-describedby={detailsId} onClick={onAddCategory}>Додати категорію</button>
             </div>
-            {transaction.category_id && (
-              <label className="min-w-0 text-sm font-medium">
-                Підкатегорія
-                <SubcategorySelect id={`csv-subcategory-${line}`} className={fieldClass} categoryId={transaction.category_id}
-                  subcategories={subcategories} value={getSubcategoryId(transaction.subcategory_id)}
-                  onChange={(id) => onChange((current) => ({ ...current, transaction: { ...current.transaction, subcategory_id: id } }))} />
-              </label>
+            {category && (
+              <div className="min-w-0">
+                <label className="block text-sm font-medium">
+                  Підкатегорія
+                  <SubcategorySelect id={`csv-subcategory-${line}`} className={fieldClass} categoryId={category.id}
+                    subcategories={subcategories} value={getSubcategoryId(transaction.subcategory_id)}
+                    onChange={(id) => onChange((current) => ({ ...current, transaction: { ...current.transaction, subcategory_id: id } }))} />
+                </label>
+                <button type="button" className={createButtonClass}
+                  aria-describedby={detailsId} onClick={() => onAddSubcategory(category)}>Додати підкатегорію</button>
+              </div>
             )}
           </div>
           {row.categoryName && <p className="break-words text-sm text-zinc-400">Категорія у файлі — {row.categoryName}</p>}

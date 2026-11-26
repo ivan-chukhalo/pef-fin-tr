@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { Category } from './data'
-import { defaultSubcategoryName, listSubcategories, type Subcategory } from './subcategories'
+import { getSubcategoryNameError, listSubcategories, type Subcategory } from './subcategories'
 
 const buttonClass = 'inline-flex min-h-10 items-center rounded-lg border border-zinc-700 px-3 text-xs font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 
@@ -20,12 +20,9 @@ export default function SubcategoryManager({ category, subcategories, readOnly, 
     event.preventDefault()
     if (!editor || saving || readOnly) return
     const name = editor.name.trim()
-    if (!name || name.toLocaleLowerCase('uk-UA') === defaultSubcategoryName.toLocaleLowerCase('uk-UA')) {
-      setError('Вкажи власну назву підкатегорії.')
-      return
-    }
-    if (rows.some((row) => row.id !== editor.id && row.name.toLocaleLowerCase('uk-UA') === name.toLocaleLowerCase('uk-UA'))) {
-      setError('У цій категорії вже є така назва.')
+    const nameError = getSubcategoryNameError(name, rows, category.id, editor.id)
+    if (nameError) {
+      setError(nameError)
       return
     }
     setSaving(true)

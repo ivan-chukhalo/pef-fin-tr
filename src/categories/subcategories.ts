@@ -19,6 +19,18 @@ export function getSubcategoryName(id: string | null | undefined, subcategories:
   return subcategories.get(getSubcategoryId(id))?.name ?? defaultSubcategoryName
 }
 
+export function getSubcategoryNameError(name: string, subcategories: readonly Subcategory[], categoryId: string, id?: string) {
+  const normalized = name.trim().toLocaleLowerCase('uk-UA')
+  if (!normalized || normalized === defaultSubcategoryName.toLocaleLowerCase('uk-UA')) {
+    return 'Вкажи власну назву підкатегорії.'
+  }
+  if (subcategories.some((row) => row.category_id === categoryId && row.id !== id &&
+    row.name.trim().toLocaleLowerCase('uk-UA') === normalized)) {
+    return 'У цій категорії вже є така назва.'
+  }
+  return ''
+}
+
 export function listSubcategories(subcategories: readonly Subcategory[], categoryId: string) {
   return subcategories.filter(({ category_id }) => category_id === categoryId)
     .sort((first, second) => first.name.localeCompare(second.name, 'uk-UA'))

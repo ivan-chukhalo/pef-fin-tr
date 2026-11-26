@@ -15,13 +15,15 @@ const categoryTypes = [
   { type: 'income', label: 'Доходи' },
 ] as const
 
+type CategoryDeletion = { id: string; confirm: boolean }
+
 function CategoryList({
   categories,
   subcategories,
   label,
   disabled,
-  usedCategoryIds,
-  categoryToDelete,
+  deletion,
+  getDeletionReason,
   onEdit,
   onToggleHidden,
   onChooseDeletion,
@@ -33,8 +35,8 @@ function CategoryList({
   subcategories: readonly Subcategory[] | null
   label: string
   disabled: boolean
-  usedCategoryIds: ReadonlySet<string> | null
-  categoryToDelete: string | null
+  deletion: CategoryDeletion | null
+  getDeletionReason: (id: string) => string | null
   onEdit: (category: Category) => void
   onToggleHidden: (category: Category) => void
   onChooseDeletion: (id: string | null) => void
@@ -46,6 +48,10 @@ function CategoryList({
     <ul aria-label={label} className="grid gap-2">
       {categories.map((category) => {
         const action = category.is_hidden ? 'Відновити' : 'Приховати'
+        const reason = getDeletionReason(category.id)
+        const showReason = deletion?.id === category.id && !!reason
+        const showConfirmation = deletion?.id === category.id && deletion.confirm && !reason
+        const reasonId = `category-deletion-reason-${category.id}`
 
         return (
           <li key={category.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
@@ -85,22 +91,26 @@ function CategoryList({
                 </svg>
                 <span className="hidden md:inline">{action}</span>
               </button>
-              {usedCategoryIds && !usedCategoryIds.has(category.id) && (
-                <button
-                  type="button"
-                  className={categoryActionClass}
-                  disabled={disabled}
-                  aria-label={`Видалити категорію ${category.name}`}
-                  onClick={() => onChooseDeletion(category.id)}
-                >
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
-                    <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
-                  </svg>
-                  <span className="hidden md:inline">Видалити</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className={`${categoryActionClass} aria-disabled:text-zinc-500 aria-disabled:hover:bg-transparent`}
+                aria-disabled={!!reason}
+                aria-label={`Видалити категорію ${category.name}`}
+                aria-describedby={reason ? reasonId : undefined}
+                onClick={() => onChooseDeletion(showReason || showConfirmation ? null : category.id)}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="size-5 md:hidden">
+                  <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" />
+                </svg>
+                <span className="hidden md:inline">Видалити</span>
+              </button>
             </div>
-            {categoryToDelete === category.id && (
+            {reason && (
+              <p id={reasonId} hidden={!showReason} role="status" className="col-span-2 rounded-xl bg-zinc-800/60 px-3 py-2 text-sm text-zinc-200">
+                {reason}
+              </p>
+            )}
+            {showConfirmation && (
               <div className="col-span-2 space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3">
                 <p className="text-sm text-rose-100 [overflow-wrap:anywhere]">Видалити категорію «{category.name}»?</p>
                 <div className="flex flex-wrap gap-2">
@@ -129,8 +139,8 @@ function CategoryList({
 
 export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
   const [categories, setCategories] = useState<Category[] | null>(null)
-  const [usedCategoryIds, setUsedCategoryIds] = useState<ReadonlySet<string> | null>(null)
-  const [categoryToDelete, setCategoryToDelete] = useState<string | null>(null)
+  const [usedCategoryIds, setUsedCategoryIds] = useState<ReadonlySet<string> | 'unavailable' | null>(null)
+  const [deletion, setDeletion] = useState<CategoryDeletion | null>(null)
   const [categoryType, setCategoryType] = useState<CategoryType>('expense')
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
@@ -157,7 +167,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
         if (!controller.signal.aborted) setUsedCategoryIds(ids)
       },
       () => {
-        if (!controller.signal.aborted) setUsedCategoryIds(null)
+        if (!controller.signal.aborted) setUsedCategoryIds('unavailable')
       },
     )
 
@@ -166,7 +176,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
 
   function openEditor(category?: Category) {
     setFeedback(null)
-    setCategoryToDelete(null)
+    setDeletion(null)
     setEditor({
       id: category?.id ?? crypto.randomUUID(),
       initialName: category?.name ?? '',
@@ -183,7 +193,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
     setSubcategories((current) => current && [...current.filter(({ id }) => id !== subcategory.id), subcategory])
   }
 
-  async function applyCategoryChange(change: () => Promise<string>, errorMessage: string) {
+  async function applyCategoryChange(change: () => Promise<string | undefined>, errorMessage: string) {
     if (snapshot || saving.current) return
 
     saving.current = true
@@ -192,7 +202,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
 
     try {
       const message = await change()
-      setFeedback({ message, isError: false })
+      if (message) setFeedback({ message, isError: false })
     } catch {
       setFeedback({ message: errorMessage, isError: true })
     } finally {
@@ -214,29 +224,43 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
 
   function handleToggleHidden(category: Category) {
     const isHidden = !category.is_hidden
-    setCategoryToDelete(null)
+    setDeletion(null)
     void applyCategoryChange(async () => {
       upsertCategoryInList(await setCategoryHidden(client, category.id, isHidden))
       return isHidden ? 'Категорію приховано.' : 'Категорію відновлено.'
     }, 'Не вдалося змінити видимість категорії. Спробуйте ще раз.')
   }
 
+  function getDeletionReason(id: string) {
+    if (usedCategoryIds !== 'unavailable' && usedCategoryIds?.has(id)) {
+      return 'Категорія вже використовувалася в транзакції або повторюваному шаблоні.'
+    }
+    if (snapshot) return 'Для видалення категорії потрібен інтернет.'
+    if (isSaving) return 'Зачекай, поки збережуться зміни.'
+    if (editor) return 'Спочатку збережи або скасуй редагування категорії.'
+    if (usedCategoryIds === 'unavailable') return 'Не вдалося перевірити використання категорії. Онови сторінку.'
+    if (!usedCategoryIds) return 'Перевіряємо, чи використовувалася категорія.'
+    return null
+  }
+
   function chooseDeletion(id: string | null) {
     setFeedback(null)
-    setCategoryToDelete(id)
+    setDeletion(id ? { id, confirm: !getDeletionReason(id) } : null)
   }
 
   function handleDelete(category: Category) {
+    if (getDeletionReason(category.id)) return
     void applyCategoryChange(async () => {
       const removed = await deleteUnusedCategory(client, category.id)
-      setCategoryToDelete(null)
       if (!removed) {
-        setUsedCategoryIds((current) => current && new Set([...current, category.id]))
-        throw new Error('Category is in use')
+        setUsedCategoryIds((current) => current && current !== 'unavailable' ? new Set([...current, category.id]) : current)
+        setDeletion({ id: category.id, confirm: false })
+        return
       }
+      setDeletion(null)
       setCategories((current) => current && current.filter(({ id }) => id !== category.id))
       return 'Категорію видалено.'
-    }, 'Не вдалося видалити категорію. Категорію з операціями можна приховати.')
+    }, 'Не вдалося видалити категорію. Спробуй ще раз.')
   }
 
   if (!categories) {
@@ -265,8 +289,8 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
   const listActions = {
     subcategories,
     disabled: isSaving || !!editor || !!snapshot,
-    usedCategoryIds,
-    categoryToDelete,
+    deletion,
+    getDeletionReason,
     onEdit: openEditor,
     onToggleHidden: handleToggleHidden,
     onChooseDeletion: chooseDeletion,
@@ -291,7 +315,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
               disabled={isSaving || !!editor}
               onClick={() => {
                 setCategoryType(type)
-                setCategoryToDelete(null)
+                setDeletion(null)
               }}
               className="min-h-10 rounded-lg px-3 text-sm font-medium text-zinc-300 hover:bg-zinc-800 aria-pressed:bg-emerald-300/10 aria-pressed:text-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60"
             >

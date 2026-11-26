@@ -74,6 +74,7 @@ export async function loadUsedCategoryIds(client: SupabaseClient, signal: AbortS
 export async function deleteUnusedCategory(client: SupabaseClient, id: string): Promise<boolean> {
   const table = client.from('categories')
   const { data: deleted, error } = await table.delete().eq('id', id).select('id').maybeSingle()
+  if (error?.code === '23503') return false
   if (error) throw error
   if (deleted) return true
 

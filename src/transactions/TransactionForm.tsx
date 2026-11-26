@@ -5,6 +5,7 @@ import AccountPicker from '../accounts/AccountPicker'
 import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
 import CreateCategoryDialog from '../categories/CreateCategoryDialog'
+import CreateSubcategoryDialog from '../categories/CreateSubcategoryDialog'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
 import SubcategorySelect from '../categories/SubcategorySelect'
 import { defaultSubcategoryId, getSubcategoryId, type Subcategory } from '../categories/subcategories'
@@ -19,6 +20,7 @@ import { convertToUah, parseExchangeRate } from './exchange'
 import { useNbuRate } from './useNbuRate'
 
 const fieldClass = 'min-w-0 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-zinc-100 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
+const createButtonClass = 'w-fit min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 const invalidSelectionMessage = 'Оберіть рахунок і категорію.'
 
 function Field({ id, label, children, wide = false }: { id: string; label: string; children: ReactNode; wide?: boolean }) {
@@ -63,7 +65,7 @@ function scheduleFitsCalendar(date: string, frequency: RecurringSchedule['freque
 }
 
 export default function TransactionForm(props: TransactionFormProps) {
-  const { accounts, changesByAccount, categoryClient, subcategories, lastUsdRate, isSaving, saveError } = props
+  const { accounts, changesByAccount, categoryClient, lastUsdRate, isSaving, saveError } = props
   const recurring = props.recurringTemplate !== undefined
   const transaction = recurring ? null : props.transaction
   const template = props.recurringTemplate
@@ -74,7 +76,8 @@ export default function TransactionForm(props: TransactionFormProps) {
   const [categoryId, setCategoryId] = useState(details?.category_id ?? '')
   const [subcategoryId, setSubcategoryId] = useState(getSubcategoryId(details?.subcategory_id))
   const [addedCategories, setAddedCategories] = useState<Category[]>([])
-  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [addedSubcategories, setAddedSubcategories] = useState<Subcategory[]>([])
+  const [creating, setCreating] = useState<'category' | 'subcategory' | null>(null)
   const [type, setType] = useState<CategoryType>(details?.type ?? 'expense')
   const [status, setStatus] = useState(recurring ? 'planned' : props.initialStatus)
   const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
@@ -108,12 +111,14 @@ export default function TransactionForm(props: TransactionFormProps) {
   }
 
   const categories = [...props.categories, ...addedCategories.filter((category) => !props.categories.some(({ id }) => id === category.id))]
+  const subcategories = [...props.subcategories, ...addedSubcategories.filter((subcategory) => !props.subcategories.some(({ id }) => id === subcategory.id))]
   const availableCategories = getAvailableCategories(categories, type)
   const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === details?.account_id)
   const keptCategory = categories.find((category) =>
     category.is_hidden && category.type === type && category.id === categoryId && category.id === details?.category_id,
   )
   const selectedCategory = keptCategory ?? availableCategories.find(({ id }) => id === categoryId)
+  const canCreate = categoryClient && !confirming && !props.offline
   const validAccount = Boolean(keptAccount) || activeAccounts.some(({ id }) => id === accountId)
   const validCategory = Boolean(selectedCategory)
   const amount = parseHryvnias(amountInput)
@@ -290,16 +295,16 @@ export default function TransactionForm(props: TransactionFormProps) {
             {keptCategory && <option value={keptCategory.id} disabled>{keptCategory.name} (приховано)</option>}
             {availableCategories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
           </select>
-          {categoryClient && !confirming && !props.offline && (
-            <button type="button" className="w-fit min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
-              onClick={() => setCreatingCategory(true)}>
-              Додати категорію
-            </button>
+          {canCreate && (
+            <button type="button" className={createButtonClass} onClick={() => setCreating('category')}>Додати категорію</button>
           )}
         </Field>
         <Field id="transaction-subcategory" label="Підкатегорія">
           <SubcategorySelect id="transaction-subcategory" className={fieldClass} categoryId={categoryId} subcategories={subcategories}
             value={subcategoryId} onChange={setSubcategoryId} disabled={confirming || !categoryId} />
+          {canCreate && selectedCategory && !selectedCategory.is_hidden && (
+            <button type="button" className={createButtonClass} onClick={() => setCreating('subcategory')}>Додати підкатегорію</button>
+          )}
         </Field>
         <Field id="transaction-comment" label="Коментар (необов’язково)" wide>
           <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={details?.comment ?? ''} readOnly={confirming} />
@@ -335,14 +340,22 @@ export default function TransactionForm(props: TransactionFormProps) {
   return (
     <>
       {form}
-      {creatingCategory && categoryClient && (
-        <CreateCategoryDialog client={categoryClient} type={type} onCancel={() => setCreatingCategory(false)}
+      {creating === 'category' && categoryClient && (
+        <CreateCategoryDialog client={categoryClient} type={type} onCancel={() => setCreating(null)}
           onCreated={(category) => {
             setAddedCategories((current) => [...current, category])
             setCategoryId(category.id)
             setSubcategoryId(defaultSubcategoryId)
             setErrorMessage((message) => message === invalidSelectionMessage ? '' : message)
-            setCreatingCategory(false)
+            setCreating(null)
+          }} />
+      )}
+      {creating === 'subcategory' && categoryClient && selectedCategory && (
+        <CreateSubcategoryDialog client={categoryClient} category={selectedCategory} subcategories={subcategories}
+          onCancel={() => setCreating(null)} onCreated={(subcategory) => {
+            setAddedSubcategories((current) => [...current, subcategory])
+            setSubcategoryId(subcategory.id)
+            setCreating(null)
           }} />
       )}
     </>
