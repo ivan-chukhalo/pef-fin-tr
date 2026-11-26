@@ -1,8 +1,10 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import AccountPicker from '../accounts/AccountPicker'
 import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
+import CreateCategoryDialog from '../categories/CreateCategoryDialog'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
 import SubcategorySelect from '../categories/SubcategorySelect'
 import { defaultSubcategoryId, getSubcategoryId, type Subcategory } from '../categories/subcategories'
@@ -32,6 +34,7 @@ type TransactionFormProps = {
   accounts: Account[]
   changesByAccount: ReadonlyMap<string, bigint> | null
   categories: Category[]
+  categoryClient?: SupabaseClient
   subcategories: Subcategory[]
   lastUsdRate: string
   isSaving: boolean
@@ -60,7 +63,7 @@ function scheduleFitsCalendar(date: string, frequency: RecurringSchedule['freque
 }
 
 export default function TransactionForm(props: TransactionFormProps) {
-  const { accounts, changesByAccount, categories, subcategories, lastUsdRate, isSaving, saveError } = props
+  const { accounts, changesByAccount, categoryClient, subcategories, lastUsdRate, isSaving, saveError } = props
   const recurring = props.recurringTemplate !== undefined
   const transaction = recurring ? null : props.transaction
   const template = props.recurringTemplate
@@ -70,6 +73,8 @@ export default function TransactionForm(props: TransactionFormProps) {
   const [accountId, setAccountId] = useState(details?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
   const [categoryId, setCategoryId] = useState(details?.category_id ?? '')
   const [subcategoryId, setSubcategoryId] = useState(getSubcategoryId(details?.subcategory_id))
+  const [addedCategories, setAddedCategories] = useState<Category[]>([])
+  const [creatingCategory, setCreatingCategory] = useState(false)
   const [type, setType] = useState<CategoryType>(details?.type ?? 'expense')
   const [status, setStatus] = useState(recurring ? 'planned' : props.initialStatus)
   const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
@@ -102,6 +107,7 @@ export default function TransactionForm(props: TransactionFormProps) {
     else if (savedRate) rateHint = 'Курс із запланованої операції.'
   }
 
+  const categories = [...props.categories, ...addedCategories.filter((category) => !props.categories.some(({ id }) => id === category.id))]
   const availableCategories = getAvailableCategories(categories, type)
   const keptAccount = accounts.find((account) => account.is_hidden && account.id === accountId && account.id === details?.account_id)
   const keptCategory = categories.find((category) =>
@@ -182,7 +188,7 @@ export default function TransactionForm(props: TransactionFormProps) {
     }
   }
 
-  return (
+  const form = (
     <form aria-label={formLabel} onSubmit={handleSubmit} className="mt-6 max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
       <fieldset disabled={isSaving} className="grid min-w-0 gap-4 sm:grid-cols-2 sm:items-start">
         <Field id="transaction-name" label={type === 'income' ? 'Назва доходу (необов’язково)' : 'Назва покупки (необов’язково)'} wide>
@@ -284,6 +290,12 @@ export default function TransactionForm(props: TransactionFormProps) {
             {keptCategory && <option value={keptCategory.id} disabled>{keptCategory.name} (приховано)</option>}
             {availableCategories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
           </select>
+          {categoryClient && !confirming && !props.offline && (
+            <button type="button" className="w-fit min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              onClick={() => setCreatingCategory(true)}>
+              Додати категорію
+            </button>
+          )}
         </Field>
         <Field id="transaction-subcategory" label="Підкатегорія">
           <SubcategorySelect id="transaction-subcategory" className={fieldClass} categoryId={categoryId} subcategories={subcategories}
@@ -299,7 +311,7 @@ export default function TransactionForm(props: TransactionFormProps) {
           <Link to="/more/accounts" className="text-emerald-200 underline underline-offset-2">Додайте або відновіть рахунок</Link>, щоб зберегти {recurring ? 'шаблон' : 'транзакцію'}.
         </p>
       )}
-      {!availableCategories.length && !keptCategory && (
+      {!availableCategories.length && !keptCategory && (!categoryClient || props.offline || confirming) && (
         <p className="mt-4 text-sm text-zinc-300">
           <Link to="/more/categories" className="text-emerald-200 underline underline-offset-2">Додайте або відновіть категорію</Link> для цього типу операції.
         </p>
@@ -318,5 +330,21 @@ export default function TransactionForm(props: TransactionFormProps) {
         </Link>
       </div>
     </form>
+  )
+
+  return (
+    <>
+      {form}
+      {creatingCategory && categoryClient && (
+        <CreateCategoryDialog client={categoryClient} type={type} onCancel={() => setCreatingCategory(false)}
+          onCreated={(category) => {
+            setAddedCategories((current) => [...current, category])
+            setCategoryId(category.id)
+            setSubcategoryId(defaultSubcategoryId)
+            setErrorMessage((message) => message === invalidSelectionMessage ? '' : message)
+            setCreatingCategory(false)
+          }} />
+      )}
+    </>
   )
 }

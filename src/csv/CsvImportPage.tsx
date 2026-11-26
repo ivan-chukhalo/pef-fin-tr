@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { useCallback, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
+import CreateCategoryDialog from '../categories/CreateCategoryDialog'
 import { getAvailableCategories, type Category } from '../categories/data'
 import SubcategorySelect from '../categories/SubcategorySelect'
 import { getSubcategoryId, type Subcategory } from '../categories/subcategories'
@@ -20,7 +21,7 @@ const rowsPerPage = 25
 
 export default function CsvImportPage({ client, transactionOverlay, pendingTransfers }: Pick<OfflinePageProps, 'client' | 'transactionOverlay' | 'pendingTransfers'>) {
   const load = useCallback((signal: AbortSignal) => loadTransactionOptions(client, signal), [client])
-  const { data, hasError, retry } = useLoadData(load)
+  const { data, setData, hasError, retry } = useLoadData(load)
   const [file, setFile] = useState<CsvFile | null>(null)
   const [mapping, setMapping] = useState<CsvMapping>({})
   const [accountId, setAccountId] = useState('')
@@ -138,7 +139,11 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
       )}
       {data && account && preview && (
         <CsvPreview client={client} account={account} categories={data.categories} subcategories={data.subcategories}
-          rows={preview} saving={saving} setSaving={setSaving} />
+          rows={preview} saving={saving} setSaving={setSaving}
+          onCategoryCreated={(category) => setData((current) => current && {
+            ...current,
+            categories: [...current.categories.filter(({ id }) => id !== category.id), category],
+          })} />
       )}
     </div>
   )
@@ -147,7 +152,7 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
 type EditableRow = Extract<CsvRow, { transaction: CsvTransaction }> & { selected: boolean }
 type PreviewRow = Extract<CsvRow, { error: string }> | EditableRow
 
-function CsvPreview({ client, account, categories, subcategories, rows, saving, setSaving }: {
+function CsvPreview({ client, account, categories, subcategories, rows, saving, setSaving, onCategoryCreated }: {
   client: SupabaseClient
   account: { id: string; name: string }
   categories: Category[]
@@ -155,6 +160,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
   rows: CsvRow[]
   saving: boolean
   setSaving: (value: boolean) => void
+  onCategoryCreated: (category: Category) => void
 }) {
   const [entries, setEntries] = useState<PreviewRow[]>(() => rows.map((row) =>
     'error' in row ? row : { ...row, selected: !row.existing && !row.possibleMatch },
@@ -162,6 +168,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
   const [page, setPage] = useState(1)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [categoryDraft, setCategoryDraft] = useState<EditableRow | null>(null)
   const options = { income: getAvailableCategories(categories, 'income'), expense: getAvailableCategories(categories, 'expense') }
   const editable = entries.filter((row): row is EditableRow => 'transaction' in row && !row.existing)
   const selected = editable.filter((row) => row.selected)
@@ -200,7 +207,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
     }
   }
 
-  return (
+  const form = (
     <form onSubmit={save} className="space-y-4">
       <fieldset disabled={saving} className="min-w-0 space-y-4">
         <div className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
@@ -248,6 +255,7 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
                 ? <p className="text-sm text-rose-300">Рядок {row.line}. {row.error}</p>
                 : <CsvPreviewRow row={row} categories={options[row.transaction.type]} subcategories={subcategories}
                     onCategoryChange={(id) => updateEntry(row.line, (current) => assignCategory(current, id))}
+                    onAddCategory={() => setCategoryDraft(row)}
                     onChange={(update) => updateEntry(row.line, update)} />}
             </li>
           ))}
@@ -274,13 +282,29 @@ function CsvPreview({ client, account, categories, subcategories, rows, saving, 
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </form>
   )
+
+  return (
+    <>
+      {form}
+      {categoryDraft && (
+        <CreateCategoryDialog client={client} type={categoryDraft.transaction.type}
+          initialName={categoryDraft.transaction.category_id ? '' : categoryDraft.categoryName}
+          onCancel={() => setCategoryDraft(null)} onCreated={(category) => {
+            onCategoryCreated(category)
+            updateEntry(categoryDraft.line, (row) => assignCategory(row, category.id))
+            setCategoryDraft(null)
+          }} />
+      )}
+    </>
+  )
 }
 
-function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onChange }: {
+function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onAddCategory, onChange }: {
   row: EditableRow
   categories: Category[]
   subcategories: Subcategory[]
   onCategoryChange: (id: string) => void
+  onAddCategory: () => void
   onChange: (update: (row: EditableRow) => EditableRow) => void
 }) {
   const { transaction, line } = row
@@ -317,14 +341,18 @@ function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onCha
                 onChange((current) => ({ ...current, transaction: { ...current.transaction, purchase_name: purchaseName } }))
               }} />
             </label>
-            <label className="min-w-0 text-sm font-medium">
-              Категорія
-              <select className={fieldClass} style={categoryColorStyle(category?.color)} value={transaction.category_id}
-                onChange={(event) => onCategoryChange(event.target.value)}>
-                <option value="">Вибери категорію</option>
-                {categories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
-              </select>
-            </label>
+            <div className="min-w-0">
+              <label className="block text-sm font-medium">
+                Категорія
+                <select className={fieldClass} style={categoryColorStyle(category?.color)} value={transaction.category_id}
+                  onChange={(event) => onCategoryChange(event.target.value)}>
+                  <option value="">Вибери категорію</option>
+                  {categories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
+                </select>
+              </label>
+              <button type="button" className="min-h-10 rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+                aria-describedby={detailsId} onClick={onAddCategory}>Додати категорію</button>
+            </div>
             {transaction.category_id && (
               <label className="min-w-0 text-sm font-medium">
                 Підкатегорія

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import CategoryLabel from './CategoryLabel'
 import { isCategoryColor } from './color'
 
@@ -9,6 +9,8 @@ export default function CategoryForm({
   initialColor,
   isNew,
   isSaving,
+  heading,
+  saveError,
   onSave,
   onCancel,
 }: {
@@ -16,12 +18,15 @@ export default function CategoryForm({
   initialColor: string | null
   isNew: boolean
   isSaving: boolean
+  heading?: string
+  saveError?: string
   onSave: (name: string, color: string | null) => void
   onCancel: () => void
 }) {
   const [name, setName] = useState(initialName)
   const [colorInput, setColorInput] = useState(initialColor ?? '')
   const [errorMessage, setErrorMessage] = useState('')
+  const headingId = useId()
   const color = colorInput.trim().toLowerCase()
   const validColor = isCategoryColor(color)
 
@@ -43,9 +48,9 @@ export default function CategoryForm({
   }
 
   return (
-    <form aria-labelledby="category-form-heading" onSubmit={handleSubmit} className="max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
-      <h2 id="category-form-heading" className="text-lg font-semibold">
-        {isNew ? 'Нова категорія' : 'Редагувати категорію'}
+    <form aria-labelledby={headingId} onSubmit={handleSubmit} className="max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-5 sm:p-6">
+      <h2 id={headingId} className="text-lg font-semibold">
+        {heading ?? (isNew ? 'Нова категорія' : 'Редагувати категорію')}
       </h2>
       <label className="mt-4 grid gap-2 text-sm font-medium">
         Назва категорії
@@ -89,7 +94,7 @@ export default function CategoryForm({
         </div>
         {name.trim() && <CategoryLabel name={name.trim()} color={color} />}
       </fieldset>
-      {errorMessage && <p role="alert" className="mt-4 text-sm text-rose-300">{errorMessage}</p>}
+      {(errorMessage || saveError) && <p role="alert" className="mt-4 text-sm text-rose-300">{errorMessage || saveError}</p>}
       <div className="mt-5 flex flex-wrap gap-3">
         <button
           type="submit"

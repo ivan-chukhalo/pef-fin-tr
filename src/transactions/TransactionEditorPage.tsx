@@ -121,7 +121,7 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
 
   const status = confirming ? 'confirmed' : (original ?? data.transaction)?.status ?? initialStatus
   return <TransactionForm {...data} transaction={original ?? data.transaction} initialStatus={status} confirming={confirming} offline={!!snapshot}
-    lastServerDate={lastServerDate} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
+    categoryClient={client} lastServerDate={lastServerDate} isSaving={isSaving} saveError={saveError} onSave={handleSave} />
 }
 
 export default function TransactionEditorPage({ confirming = false, ...props }: OfflinePageProps & { confirming?: boolean; queueTransaction?: QueueTransaction; queueTransactionChange?: QueueTransactionChange }) {
