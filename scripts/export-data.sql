@@ -32,6 +32,12 @@ select jsonb_pretty(jsonb_build_object(
     ) order by r.id), '[]'::jsonb)
     from public.recurring_templates r
   ),
+  'category_budget_limits', (
+    select coalesce(jsonb_agg(to_jsonb(l) || jsonb_build_object(
+      'amount_kop', l.amount_kop::text
+    ) order by l.category_id, l.effective_month), '[]'::jsonb)
+    from public.category_budget_limits l
+  ),
   'category_history', (
     select coalesce(jsonb_agg(to_jsonb(h) order by h.user_id, h.id), '[]'::jsonb)
     from public.category_history h

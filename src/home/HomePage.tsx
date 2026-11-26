@@ -7,6 +7,7 @@ import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
 import { loadTransactionHistory } from '../transactions/data'
 import { getTransactionLabels } from '../transactions/labels'
+import BudgetReminder from './BudgetReminder'
 import TransactionReminders from './TransactionReminders'
 
 const cardClass = 'min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900'
@@ -84,6 +85,7 @@ export default function HomePage({ client, snapshot, transactionOverlay, pending
         ) : <p className={`${cardClass} p-4 text-sm text-zinc-400 sm:p-5`}>Активних рахунків ще немає.</p>}
       </section>
 
+      <BudgetReminder client={client} snapshot={snapshot} />
       <TransactionReminders client={client} snapshot={snapshot} transactionOverlay={transactionOverlay} categories={categoriesById} />
 
       <section aria-labelledby="home-recent">

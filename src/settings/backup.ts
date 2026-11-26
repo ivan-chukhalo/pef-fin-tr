@@ -1,4 +1,6 @@
 import { isCategoryColor } from '../categories/color'
+import { isDateOnOrBefore } from '../lib/dates'
+import { fitsDatabaseKopecks } from '../lib/money'
 
 const summaryLabels = {
   accounts: 'Рахунки',
@@ -11,10 +13,11 @@ const summaryLabels = {
 type SummaryKey = keyof typeof summaryLabels
 type BackupRow = Record<string, unknown>
 export type BackupSummary = Record<SummaryKey, number>
-export type BackupVersion = BackupSummary & { id: string; created_at: string }
+export type BackupVersion = BackupSummary & { id: string; created_at: string; category_budget_limits?: number }
 export type Backup = Record<SummaryKey | 'category_history', BackupRow[]> & {
   format_version: number
   exported_at: string
+  category_budget_limits?: BackupRow[]
 }
 
 export const summaryKeys = Object.keys(summaryLabels) as SummaryKey[]
@@ -36,6 +39,9 @@ function isTimestamp(value: unknown): value is string {
 export function isBackup(value: unknown): value is Backup {
   if (!isRecord(value) || value.format_version !== 1 || !isTimestamp(value.exported_at)) return false
 
+  const limits = value.category_budget_limits
+  if (limits !== undefined && (!Array.isArray(limits) || !limits.every(isBudgetLimit))) return false
+
   return collections.every((name) => {
     const rows = value[name]
     return Array.isArray(rows) && rows.every(isRecord)
@@ -44,14 +50,24 @@ export function isBackup(value: unknown): value is Backup {
 
 export function isBackupVersion(value: unknown): value is BackupVersion {
   return isRecord(value) && typeof value.id === 'string' && uuid.test(value.id) &&
-    isTimestamp(value.created_at) && summaryKeys.every((key) => {
-      const count = value[key]
-      return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0
-    })
+    (value.category_budget_limits === undefined || isRowCount(value.category_budget_limits)) &&
+    isTimestamp(value.created_at) && summaryKeys.every((key) => isRowCount(value[key]))
+}
+
+function isRowCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
 function keyOf(value: unknown) {
   return typeof value === 'string' && uuid.test(value) ? value.toLowerCase() : ''
+}
+
+function isBudgetLimit(value: unknown) {
+  if (!isRecord(value) || !keyOf(value.id) || !keyOf(value.category_id)) return false
+  const { effective_month, amount_kop } = value
+  return typeof effective_month === 'string' && effective_month.endsWith('-01') && isDateOnOrBefore(effective_month)
+    && (amount_kop === null || (typeof amount_kop === 'string' && /^[1-9]\d{0,18}$/.test(amount_kop)
+      && fitsDatabaseKopecks(BigInt(amount_kop))))
 }
 
 function indexRows(rows: BackupRow[]) {
@@ -92,6 +108,18 @@ export function parseBackup(text: string): Backup {
 
   if (backup.categories.some(({ color }) => color != null && !isCategoryColor(color))) {
     throw new Error('У резервній копії є категорія з некоректним кольором.')
+  }
+
+  const limits = backup.category_budget_limits ?? []
+  indexRows(limits)
+  const limitMonths = new Set<string>()
+  for (const limit of limits) {
+    const categoryId = keyOf(limit.category_id)
+    const key = `${categoryId}/${limit.effective_month}`
+    if (ids.categories.get(categoryId)?.type !== 'expense' || limitMonths.has(key)) {
+      throw new Error('У копії є ліміт із некоректною категорією або повторно вказаним місяцем.')
+    }
+    limitMonths.add(key)
   }
 
   const referencedCategories = new Set<string>()

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { HashRouter, Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import AccountsPage from './accounts/AccountsPage'
+import { categoryBudgetsPath } from './analytics/budgets'
 import HomePage from './home/HomePage'
 import { formatDateTimeInKyiv } from './lib/dates'
 import { isRejectedConfirmation, type OfflinePageProps, type OfflineSnapshot } from './offline/snapshot'
@@ -12,6 +13,7 @@ import type { QueueTransfer, QueueTransferChange, ResolveRejectedTransfer } from
 
 const CategoriesPage = lazy(() => import('./categories/CategoriesPage'))
 const AnalyticsPage = lazy(() => import('./analytics/AnalyticsPage'))
+const CategoryBudgetsPage = lazy(() => import('./analytics/CategoryBudgetsPage'))
 const TransactionsPage = lazy(() => import('./transactions/TransactionsPage'))
 const TransactionEditorPage = lazy(() => import('./transactions/TransactionEditorPage'))
 const TransferPage = lazy(() => import('./transfers/TransferPage'))
@@ -30,9 +32,11 @@ const analytics = { path: '/analytics', label: 'Аналітика' }
 const forecast = { path: '/more/forecast', label: 'Прогноз' }
 const accounts = { path: '/more/accounts', label: 'Рахунки' }
 const categories = { path: '/more/categories', label: 'Категорії' }
+const budgets = { path: categoryBudgetsPath, label: 'Ліміти' }
 const settings = { path: '/more/settings', label: 'Налаштування' }
 const additionalSections = [
   forecast,
+  budgets,
   accounts,
   categories,
   settings,
@@ -268,6 +272,7 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
                 >
                   {path === home.path && <HomePage {...pageProps} />}
                   {path === analytics.path && <AnalyticsPage {...pageProps} />}
+                  {path === budgets.path && <CategoryBudgetsPage {...pageProps} />}
                   {path === forecast.path && <ForecastPage {...pageProps} queueTransactionChange={queueTransactionChange} queueTransferChange={queueTransferChange} />}
                   {path === accounts.path && <AccountsPage {...pageProps} />}
                   {path === categories.path && <CategoriesPage {...pageProps} />}

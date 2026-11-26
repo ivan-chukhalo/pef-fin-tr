@@ -1,31 +1,21 @@
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { Category } from '../categories/data'
-import { formatDate, nextCalendarDate, todayInKyiv } from '../lib/dates'
+import { formatDate, nextCalendarDate } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { isOverdueOperation } from '../lib/operations'
 import { useLoadData } from '../lib/useLoadData'
+import { useKyivToday } from '../lib/useKyivToday'
 import type { OfflinePageProps } from '../offline/snapshot'
 import { loadTransactions } from '../transactions/data'
 import { getTransactionLabels } from '../transactions/labels'
 
 const linkClass = 'inline-flex min-h-11 items-center rounded-sm text-sm font-medium text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
 
-function subscribeToDateChange(notify: () => void) {
-  const timer = window.setInterval(notify, 30_000)
-  window.addEventListener('focus', notify)
-  document.addEventListener('visibilitychange', notify)
-  return () => {
-    window.clearInterval(timer)
-    window.removeEventListener('focus', notify)
-    document.removeEventListener('visibilitychange', notify)
-  }
-}
-
 export default function TransactionReminders({ client, snapshot, transactionOverlay, categories }: Pick<OfflinePageProps, 'client' | 'snapshot' | 'transactionOverlay'> & {
   categories: ReadonlyMap<string, Category>
 }) {
-  const today = useSyncExternalStore(subscribeToDateChange, todayInKyiv)
+  const today = useKyivToday()
   const tomorrow = nextCalendarDate(today)
   const load = useCallback(
     (signal: AbortSignal) => loadTransactions(client, signal, 'planned', snapshot, transactionOverlay),

@@ -11,7 +11,7 @@ let reachable = true
 let sessionRecovery: { userId: string; promise: Promise<string | null> } | undefined
 const endedSessionCodes = new Set(['session_expired', 'session_not_found', 'refresh_token_not_found', 'refresh_token_already_used', 'user_not_found'])
 const financeWritePaths = new Set([
-  'accounts', 'categories', 'transactions', 'transfers', 'recurring_templates',
+  'accounts', 'categories', 'transactions', 'transfers', 'recurring_templates', 'category_budget_limits',
   'rpc/import_monobank_operation', 'rpc/restore_backup',
 ].map((path) => `/rest/v1/${path}`))
 

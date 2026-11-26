@@ -114,6 +114,12 @@ export default function BackupRestore({ client }: { client: SupabaseClient }) {
                   <dd className="font-medium">{'backup' in selection ? selection.backup[key].length : selection.version[key]}</dd>
                 </div>
               ))}
+              <div>
+                <dt className="text-zinc-400">Ліміти категорій</dt>
+                <dd className="font-medium">
+                  {'backup' in selection ? selection.backup.category_budget_limits?.length ?? 0 : selection.version.category_budget_limits ?? 0}
+                </dd>
+              </div>
             </dl>
             <p className="text-sm text-rose-100">Ця копія замінить поточні дані. Поточний стан збережеться в історії на 30 днів.</p>
             <div className="flex flex-wrap gap-2">
