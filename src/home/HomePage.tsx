@@ -2,6 +2,7 @@ import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { getAccountBalance, getAccountBalanceChanges, loadTransferAmounts } from '../accounts/data'
+import { getSubcategoryName } from '../categories/subcategories'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
@@ -43,6 +44,7 @@ export default function HomePage({ client, snapshot, transactionOverlay, pending
   const activeAccounts = data.accounts.filter((account) => !account.is_hidden)
   const accountsById = new Map(data.accounts.map((account) => [account.id, account.name]))
   const categoriesById = new Map(data.categories.map((category) => [category.id, category]))
+  const subcategoriesById = new Map(data.subcategories.map((subcategory) => [subcategory.id, subcategory]))
   const recentTransactions = data.transactions.slice(0, 5)
 
   return (
@@ -105,6 +107,7 @@ export default function HomePage({ client, snapshot, transactionOverlay, pending
                     <p className="text-sm font-medium [overflow-wrap:anywhere]">{title}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 [overflow-wrap:anywhere]">
                       {categoryLabel}
+                      <span>{getSubcategoryName(transaction.subcategory_id, subcategoriesById)}</span>
                       <span>{typeLabel}</span>
                       {syncLabel}
                       <span>{accountsById.get(transaction.account_id) ?? 'Рахунок'}</span>

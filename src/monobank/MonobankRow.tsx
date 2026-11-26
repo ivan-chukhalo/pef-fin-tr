@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Account } from '../accounts/data'
 import { categoryColorStyle } from '../categories/color'
 import { getAvailableCategories, type Category } from '../categories/data'
+import SubcategorySelect from '../categories/SubcategorySelect'
+import { defaultSubcategoryId, type Subcategory } from '../categories/subcategories'
 import { formatDate, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import type { Transfer } from '../transfers/data'
@@ -14,12 +16,13 @@ export const monobankFieldClass = 'w-full min-w-0 rounded-xl border border-zinc-
 export const monobankButtonClass = 'min-h-11 rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-60'
 
 export default function MonobankRow({
-  entry, accountId, accounts, categories, transactions, transfers, busy, saving, onSave, onSkip,
+  entry, accountId, accounts, categories, subcategories, transactions, transfers, busy, saving, onSave, onSkip,
 }: {
   entry: MonobankEntry
   accountId: string
   accounts: Account[]
   categories: Category[]
+  subcategories: Subcategory[]
   transactions: Transaction[]
   transfers: Transfer[]
   busy: boolean
@@ -29,6 +32,8 @@ export default function MonobankRow({
 }) {
   const [transfer, setTransfer] = useState(false)
   const [categoryId, setCategoryId] = useState('')
+  const [subcategoryId, setSubcategoryId] = useState(defaultSubcategoryId)
+  const subcategoryFieldId = useId()
   const [otherAccountId, setOtherAccountId] = useState('')
   const [transactionName, setTransactionName] = useState(entry.description)
   const amount = BigInt(entry.amountKop)
@@ -63,6 +68,7 @@ export default function MonobankRow({
         fields: {
           account_id: accountId,
           category_id: categoryId,
+          subcategory_id: subcategoryId,
           type,
           date,
           status: 'confirmed',
@@ -125,10 +131,20 @@ export default function MonobankRow({
         ) : (
           <label className="grid min-w-0 gap-2 text-sm font-medium">
             {type === 'income' ? 'Категорія доходу' : 'Категорія витрати'}
-            <select className={monobankFieldClass} style={categoryColorStyle(categoryOptions.find(({ id }) => id === categoryId)?.color)} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            <select className={monobankFieldClass} style={categoryColorStyle(categoryOptions.find(({ id }) => id === categoryId)?.color)} value={categoryId} onChange={(event) => {
+              setCategoryId(event.target.value)
+              setSubcategoryId(defaultSubcategoryId)
+            }}>
               <option value="" disabled>Вибери категорію</option>
               {categoryOptions.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
             </select>
+          </label>
+        )}
+        {!transfer && categoryId && (
+          <label className="grid min-w-0 gap-2 text-sm font-medium">
+            Підкатегорія
+            <SubcategorySelect id={subcategoryFieldId} className={monobankFieldClass} categoryId={categoryId}
+              subcategories={subcategories} value={subcategoryId} onChange={setSubcategoryId} />
           </label>
         )}
       </fieldset>

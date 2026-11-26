@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
+import { defaultSubcategoryId, type Subcategory } from '../categories/subcategories'
 import { isDateOnOrBefore, todayInKyiv } from '../lib/dates'
 import { parseHryvnias } from '../lib/money'
 import type { TransactionOverlay } from '../offline/snapshot'
@@ -14,6 +15,7 @@ export const csvColumns = [
   { key: 'type', label: 'Тип операції', aliases: ['type', 'transaction type', 'тип', 'тип операції', 'тип транзакції'] },
   { key: 'name', label: 'Назва', aliases: ['name', 'title', 'description', 'purchase name', 'назва', 'опис', 'деталі операції', 'призначення платежу'] },
   { key: 'category', label: 'Категорія', aliases: ['category', 'категорія'] },
+  { key: 'subcategory', label: 'Підкатегорія', aliases: ['subcategory', 'sub category', 'підкатегорія'] },
   { key: 'comment', label: 'Коментар', aliases: ['comment', 'note', 'коментар', 'примітка'] },
   { key: 'currency', label: 'Валюта', aliases: ['currency', 'валюта', 'валюта операції'] },
   { key: 'rate', label: 'Курс долара', aliases: ['rate', 'exchange rate', 'курс', 'курс долара'] },
@@ -25,10 +27,17 @@ export type CsvMapping = Partial<Record<CsvColumn, number>>
 export type CsvTransaction = TransactionFields & { id: string; user_id: string }
 export type CsvRow =
   | { line: number; error: string }
-  | { line: number; transaction: CsvTransaction; amountUah: bigint; existing: boolean; possibleMatch: boolean; categoryName: string }
+  | { line: number; transaction: CsvTransaction; amountUah: bigint; existing: boolean; possibleMatch: boolean; categoryName: string; subcategoryName: string }
 
 function normalize(value: string) {
   return value.normalize('NFKC').trim().toLocaleLowerCase('uk-UA').replace(/\s+/g, ' ')
+}
+
+export function matchCsvSubcategory(subcategories: readonly Subcategory[], categoryId: string, name: string) {
+  const names = [normalize(name)]
+  if (/^'[=+@-]/.test(names[0])) names.push(names[0].slice(1))
+  return subcategories.find((subcategory) => subcategory.category_id === categoryId
+    && names.includes(normalize(subcategory.name)))?.id ?? defaultSubcategoryId
 }
 
 export function detectCsvMapping(headers: string[]): CsvMapping {
@@ -79,7 +88,8 @@ function matchKey(date: string, type: CategoryType, amount: bigint | string) {
 }
 
 export async function prepareCsvImport(client: SupabaseClient, file: CsvFile, mapping: CsvMapping, accountId: string,
-  categories: Category[], overlay?: TransactionOverlay, pendingTransfers?: readonly QueuedTransfer[]): Promise<CsvRow[]> {
+  categories: Category[], subcategories: readonly Subcategory[], overlay?: TransactionOverlay,
+  pendingTransfers?: readonly QueuedTransfer[]): Promise<CsvRow[]> {
   const { data: { session }, error } = await client.auth.getSession()
   if (error || !session) throw new Error('Сесія завершилася. Увійди знову, щоб імпортувати операції.')
   const signal = new AbortController().signal
@@ -120,6 +130,8 @@ export async function prepareCsvImport(client: SupabaseClient, file: CsvFile, ma
     if (amountUah === null) return { line, error: 'Сума в гривнях завелика.' }
     const categoryName = get('category')
     const category = byType[type].find(({ name }) => normalize(name) === normalize(categoryName))
+    const subcategoryName = get('subcategory')
+    const subcategoryId = matchCsvSubcategory(subcategories, category?.id ?? '', subcategoryName)
     const reference = get('reference')
     if (reference && references.has(reference)) return { line, error: 'ID операції повторюється в цьому файлі.' }
     if (reference) references.add(reference)
@@ -130,11 +142,11 @@ export async function prepareCsvImport(client: SupabaseClient, file: CsvFile, ma
     const hash = await csvHash(JSON.stringify(['pef-fin-tr:csv', userId, accountId, ...source]))
     const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-8${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`
     const transaction: CsvTransaction = {
-      id, user_id: userId, account_id: accountId, category_id: category?.id ?? '',
+      id, user_id: userId, account_id: accountId, category_id: category?.id ?? '', subcategory_id: subcategoryId,
       date, type, status: 'confirmed', currency, rate, amount_original_kop: amount.toString(),
       purchase_name: get('name') || null, comment: get('comment') || null,
     }
-    return { line, transaction, amountUah, existing: existing.has(id), possibleMatch: possibleMatches.has(matchKey(date, type, amountUah)), categoryName }
+    return { line, transaction, amountUah, existing: existing.has(id), possibleMatch: possibleMatches.has(matchKey(date, type, amountUah)), categoryName, subcategoryName }
   }))
 }
 

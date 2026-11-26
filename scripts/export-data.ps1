@@ -28,7 +28,7 @@ if (@($response.rows).Count -ne 1 -or -not $response.rows[0].backup) { throw 'Su
 $backup = $response.rows[0].backup
 $data = $backup | ConvertFrom-Json
 if ($data.format_version -ne 1 -or -not $data.exported_at) { throw 'Формат експорту не розпізнано.' }
-foreach ($table in 'accounts', 'categories', 'transactions', 'transfers', 'recurring_templates', 'category_history', 'category_budget_limits') {
+foreach ($table in 'accounts', 'categories', 'subcategories', 'transactions', 'transfers', 'recurring_templates', 'category_history', 'category_budget_limits') {
     if ($data.$table -isnot [array]) { throw "В експорті відсутня таблиця $table." }
 }
 

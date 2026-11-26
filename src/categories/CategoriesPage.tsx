@@ -1,8 +1,12 @@
 import type { OfflinePageProps } from '../offline/snapshot'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLoadData } from '../lib/useLoadData'
 import CategoryForm from './CategoryForm'
 import CategoryLabel from './CategoryLabel'
 import { deleteUnusedCategory, getAvailableCategories, loadCategories, loadUsedCategoryIds, saveCategory, setCategoryHidden, type Category, type CategoryType } from './data'
+import SubcategoryManager from './SubcategoryManager'
+import { loadSubcategories, saveSubcategory, setSubcategoryHidden } from './subcategoryData'
+import type { Subcategory } from './subcategories'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const categoryActionClass = `${buttonClass} inline-flex min-w-11 items-center justify-center`
@@ -13,6 +17,7 @@ const categoryTypes = [
 
 function CategoryList({
   categories,
+  subcategories,
   label,
   disabled,
   usedCategoryIds,
@@ -21,8 +26,11 @@ function CategoryList({
   onToggleHidden,
   onChooseDeletion,
   onDelete,
+  onSaveSubcategory,
+  onHideSubcategory,
 }: {
   categories: Category[]
+  subcategories: readonly Subcategory[] | null
   label: string
   disabled: boolean
   usedCategoryIds: ReadonlySet<string> | null
@@ -31,6 +39,8 @@ function CategoryList({
   onToggleHidden: (category: Category) => void
   onChooseDeletion: (id: string | null) => void
   onDelete: (category: Category) => void
+  onSaveSubcategory: (id: string, name: string, newCategory?: Category) => Promise<void>
+  onHideSubcategory: (id: string, isHidden: boolean) => Promise<void>
 }) {
   return (
     <ul aria-label={label} className="grid gap-2">
@@ -108,6 +118,8 @@ function CategoryList({
                 </div>
               </div>
             )}
+            {subcategories && <SubcategoryManager category={category} subcategories={subcategories} readOnly={disabled}
+              onSave={onSaveSubcategory} onHide={onHideSubcategory} />}
           </li>
         )
       })}
@@ -126,6 +138,8 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null)
   const saving = useRef(false)
+  const loadChildren = useCallback((signal: AbortSignal) => loadSubcategories(client, signal, snapshot), [client, snapshot])
+  const { data: subcategories, setData: setSubcategories, hasError: subcategoriesError, retry: retrySubcategories } = useLoadData(loadChildren)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -163,6 +177,10 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
 
   function upsertCategoryInList(category: Category) {
     setCategories((current) => current && [...current.filter(({ id }) => id !== category.id), category])
+  }
+
+  function updateSubcategoryList(subcategory: Subcategory) {
+    setSubcategories((current) => current && [...current.filter(({ id }) => id !== subcategory.id), subcategory])
   }
 
   async function applyCategoryChange(change: () => Promise<string>, errorMessage: string) {
@@ -245,6 +263,7 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
     .sort((first, second) => first.name.localeCompare(second.name, 'uk-UA'))
   const groupName = categoryType === 'expense' ? 'витрат' : 'доходів'
   const listActions = {
+    subcategories,
     disabled: isSaving || !!editor || !!snapshot,
     usedCategoryIds,
     categoryToDelete,
@@ -252,6 +271,12 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
     onToggleHidden: handleToggleHidden,
     onChooseDeletion: chooseDeletion,
     onDelete: handleDelete,
+    onSaveSubcategory: async (id: string, name: string, newCategory?: Category) => {
+      updateSubcategoryList(await saveSubcategory(client, id, name, newCategory))
+    },
+    onHideSubcategory: async (id: string, isHidden: boolean) => {
+      updateSubcategoryList(await setSubcategoryHidden(client, id, isHidden))
+    },
   }
 
   return (
@@ -299,6 +324,12 @@ export default function CategoriesPage({ client, snapshot }: OfflinePageProps) {
         <p role={feedback.isError ? 'alert' : 'status'} className={`text-sm ${feedback.isError ? 'text-rose-300' : 'text-emerald-200'}`}>
           {feedback.message}
         </p>
+      )}
+      {subcategoriesError && (
+        <div className="flex flex-wrap items-center gap-2">
+          <p role="alert" className="text-sm text-rose-300">Не вдалося завантажити підкатегорії.</p>
+          <button type="button" className={buttonClass} onClick={retrySubcategories}>Спробувати ще раз</button>
+        </div>
       )}
       {visibleCategories.length ? (
         <CategoryList categories={visibleCategories} label={`Активні категорії ${groupName}`} {...listActions} />

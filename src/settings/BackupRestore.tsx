@@ -115,6 +115,12 @@ export default function BackupRestore({ client }: { client: SupabaseClient }) {
                 </div>
               ))}
               <div>
+                <dt className="text-zinc-400">Підкатегорії</dt>
+                <dd className="font-medium">
+                  {'backup' in selection ? selection.backup.subcategories?.length ?? 0 : selection.version.subcategories ?? 0}
+                </dd>
+              </div>
+              <div>
                 <dt className="text-zinc-400">Ліміти категорій</dt>
                 <dd className="font-medium">
                   {'backup' in selection ? selection.backup.category_budget_limits?.length ?? 0 : selection.version.category_budget_limits ?? 0}

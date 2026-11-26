@@ -3,12 +3,14 @@ import { useCallback, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
 import { getAvailableCategories, type Category } from '../categories/data'
+import SubcategorySelect from '../categories/SubcategorySelect'
+import { getSubcategoryId, type Subcategory } from '../categories/subcategories'
 import { formatDate } from '../lib/dates'
 import { formatBalanceInput, formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
 import { loadTransactionOptions } from '../transactions/data'
-import { csvColumns, detectCsvMapping, prepareCsvImport, saveCsvImport, type CsvMapping, type CsvRow, type CsvTransaction } from './data'
+import { csvColumns, detectCsvMapping, matchCsvSubcategory, prepareCsvImport, saveCsvImport, type CsvMapping, type CsvRow, type CsvTransaction } from './data'
 import { readCsvFile, type CsvFile } from './parse'
 
 const fieldClass = 'mt-1 min-h-11 w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-300/30'
@@ -59,7 +61,7 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
     setError('')
     setBusy(true)
     try {
-      const rows = await prepareCsvImport(client, file, mapping, account.id, data.categories, transactionOverlay, pendingTransfers)
+      const rows = await prepareCsvImport(client, file, mapping, account.id, data.categories, data.subcategories, transactionOverlay, pendingTransfers)
       setPreview(rows)
     } catch {
       setError('Не вдалося перевірити операції в обліку. Спробуй ще раз.')
@@ -135,7 +137,8 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
         </form>
       )}
       {data && account && preview && (
-        <CsvPreview client={client} account={account} categories={data.categories} rows={preview} saving={saving} setSaving={setSaving} />
+        <CsvPreview client={client} account={account} categories={data.categories} subcategories={data.subcategories}
+          rows={preview} saving={saving} setSaving={setSaving} />
       )}
     </div>
   )
@@ -144,10 +147,11 @@ export default function CsvImportPage({ client, transactionOverlay, pendingTrans
 type EditableRow = Extract<CsvRow, { transaction: CsvTransaction }> & { selected: boolean }
 type PreviewRow = Extract<CsvRow, { error: string }> | EditableRow
 
-function CsvPreview({ client, account, categories, rows, saving, setSaving }: {
+function CsvPreview({ client, account, categories, subcategories, rows, saving, setSaving }: {
   client: SupabaseClient
   account: { id: string; name: string }
   categories: Category[]
+  subcategories: Subcategory[]
   rows: CsvRow[]
   saving: boolean
   setSaving: (value: boolean) => void
@@ -168,6 +172,11 @@ function CsvPreview({ client, account, categories, rows, saving, setSaving }: {
 
   function updateEntry(line: number, update: (row: EditableRow) => EditableRow) {
     setEntries((current) => current.map((row) => 'transaction' in row && row.line === line ? update(row) : row))
+  }
+
+  function assignCategory(row: EditableRow, categoryId: string): EditableRow {
+    const subcategoryId = matchCsvSubcategory(subcategories, categoryId, row.subcategoryName)
+    return { ...row, transaction: { ...row.transaction, category_id: categoryId, subcategory_id: subcategoryId } }
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -222,7 +231,7 @@ function CsvPreview({ client, account, categories, rows, saving, setSaving }: {
                   const categoryId = event.target.value
                   setEntries((current) => current.map((row) =>
                     'transaction' in row && !row.existing && row.transaction.type === type && !row.transaction.category_id
-                      ? { ...row, transaction: { ...row.transaction, category_id: categoryId } } : row,
+                      ? assignCategory(row, categoryId) : row,
                   ))
                 }}>
                   <option value="">Вибери категорію</option>
@@ -237,7 +246,9 @@ function CsvPreview({ client, account, categories, rows, saving, setSaving }: {
             <li key={row.line} className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
               {'error' in row
                 ? <p className="text-sm text-rose-300">Рядок {row.line}. {row.error}</p>
-                : <CsvPreviewRow row={row} categories={options[row.transaction.type]} onChange={(update) => updateEntry(row.line, update)} />}
+                : <CsvPreviewRow row={row} categories={options[row.transaction.type]} subcategories={subcategories}
+                    onCategoryChange={(id) => updateEntry(row.line, (current) => assignCategory(current, id))}
+                    onChange={(update) => updateEntry(row.line, update)} />}
             </li>
           ))}
         </ul>
@@ -265,9 +276,11 @@ function CsvPreview({ client, account, categories, rows, saving, setSaving }: {
   )
 }
 
-function CsvPreviewRow({ row, categories, onChange }: {
+function CsvPreviewRow({ row, categories, subcategories, onCategoryChange, onChange }: {
   row: EditableRow
   categories: Category[]
+  subcategories: Subcategory[]
+  onCategoryChange: (id: string) => void
   onChange: (update: (row: EditableRow) => EditableRow) => void
 }) {
   const { transaction, line } = row
@@ -306,16 +319,23 @@ function CsvPreviewRow({ row, categories, onChange }: {
             </label>
             <label className="min-w-0 text-sm font-medium">
               Категорія
-              <select className={fieldClass} style={categoryColorStyle(category?.color)} value={transaction.category_id} onChange={(event) => {
-                const categoryId = event.target.value
-                onChange((current) => ({ ...current, transaction: { ...current.transaction, category_id: categoryId } }))
-              }}>
+              <select className={fieldClass} style={categoryColorStyle(category?.color)} value={transaction.category_id}
+                onChange={(event) => onCategoryChange(event.target.value)}>
                 <option value="">Вибери категорію</option>
                 {categories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
               </select>
             </label>
+            {transaction.category_id && (
+              <label className="min-w-0 text-sm font-medium">
+                Підкатегорія
+                <SubcategorySelect id={`csv-subcategory-${line}`} className={fieldClass} categoryId={transaction.category_id}
+                  subcategories={subcategories} value={getSubcategoryId(transaction.subcategory_id)}
+                  onChange={(id) => onChange((current) => ({ ...current, transaction: { ...current.transaction, subcategory_id: id } }))} />
+              </label>
+            )}
           </div>
           {row.categoryName && <p className="break-words text-sm text-zinc-400">Категорія у файлі — {row.categoryName}</p>}
+          {row.subcategoryName && <p className="break-words text-sm text-zinc-400">Підкатегорія у файлі — {row.subcategoryName}</p>}
           {transaction.comment && <p className="whitespace-pre-wrap break-words text-sm text-zinc-400">{transaction.comment}</p>}
         </>
       )}

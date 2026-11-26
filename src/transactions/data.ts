@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { loadAccounts } from '../accounts/data'
 import { loadCategories, type CategoryType } from '../categories/data'
+import { loadSubcategories } from '../categories/subcategoryData'
+import { getSubcategoryId } from '../categories/subcategories'
 import type { OperationStatus, OperationStatusFilter } from '../lib/operations'
 import { readRows } from '../lib/readRows'
 import { canApplyTransactionChange, mergePendingTransactions, projectedChange, type OfflineSnapshot, type QueuedChange, type QueuedTransaction, type TransactionOverlay } from '../offline/snapshot'
@@ -11,6 +13,7 @@ export type Currency = 'UAH' | 'USD'
 export type TransactionFields = {
   account_id: string
   category_id: string
+  subcategory_id?: string
   type: CategoryType
   date: string
   status: OperationStatus
@@ -29,8 +32,8 @@ export type Transaction = TransactionFields & {
   syncState?: 'pending' | 'failed' | 'conflict'
 }
 
-const columns = 'id,account_id,category_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at,updated_at'
-const fieldNames = ['account_id', 'category_id', 'type', 'date', 'status', 'currency', 'amount_original_kop', 'rate', 'purchase_name', 'comment'] as const satisfies readonly (keyof TransactionFields)[]
+const columns = 'id,account_id,category_id,subcategory_id,type,date,status,currency,amount_original_kop::text,rate::text,amount_uah_kop::text,purchase_name,comment,created_at,updated_at'
+const fieldNames = ['account_id', 'category_id', 'subcategory_id', 'type', 'date', 'status', 'currency', 'amount_original_kop', 'rate', 'purchase_name', 'comment'] as const satisfies readonly (keyof TransactionFields)[]
 
 export async function loadTransactions(client: SupabaseClient, signal: AbortSignal, status: OperationStatusFilter = 'confirmed', snapshot?: OfflineSnapshot, overlay?: TransactionOverlay): Promise<Transaction[]> {
   const rows = snapshot ? snapshot.transactions.filter((row) => status === 'all' || row.status === status)
@@ -39,11 +42,12 @@ export async function loadTransactions(client: SupabaseClient, signal: AbortSign
 }
 
 export async function loadTransactionOptions(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {
-  const [accounts, categories] = await Promise.all([
+  const [accounts, categories, subcategories] = await Promise.all([
     loadAccounts(client, signal, snapshot),
     loadCategories(client, signal, snapshot),
+    loadSubcategories(client, signal, snapshot),
   ])
-  return { accounts, categories }
+  return { accounts, categories, subcategories: subcategories ?? [] }
 }
 
 export async function loadTransactionHistory(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot, overlay?: TransactionOverlay) {
@@ -126,8 +130,11 @@ export async function uploadQueuedTransaction(client: SupabaseClient, userId: st
 }
 
 export function sameTransactionFields(first: TransactionFields, second: TransactionFields) {
-  return fieldNames.every((field) => field === 'rate'
-    ? parseExchangeRate(first.rate) === parseExchangeRate(second.rate) : first[field] === second[field])
+  return fieldNames.every((field) => {
+    if (field === 'rate') return parseExchangeRate(first.rate) === parseExchangeRate(second.rate)
+    if (field === 'subcategory_id') return getSubcategoryId(first.subcategory_id) === getSubcategoryId(second.subcategory_id)
+    return first[field] === second[field]
+  })
 }
 
 export async function uploadQueuedChange(client: SupabaseClient, userId: string, entry: QueuedChange, signal: AbortSignal):

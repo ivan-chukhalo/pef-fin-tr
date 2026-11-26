@@ -2,10 +2,10 @@ import type { OfflinePageProps } from '../offline/snapshot'
 import { useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import CategoryLabel from '../categories/CategoryLabel'
-import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
+import { formatMonth, todayInKyiv } from '../lib/dates'
 import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
-import { getTransactionLabels } from '../transactions/labels'
+import CategoryExpenseGroups from './CategoryExpenseGroups'
 import { getComparisonMonths, loadAnalytics } from './data'
 import MonthlyComparison from './MonthlyComparison'
 
@@ -32,6 +32,7 @@ export default function AnalyticsPage({ client, snapshot, transactionOverlay }: 
   const summary = data.months.get(month)
   const totalExpense = summary?.expense ?? 0n
   const categories = new Map(data.categories.map((category) => [category.id, category]))
+  const subcategories = new Map(data.subcategories.map((subcategory) => [subcategory.id, subcategory]))
   const expenses = [...(summary?.expensesByCategory ?? [])]
     .sort(([, first], [, second]) => first.total === second.total ? 0 : first.total > second.total ? -1 : 1)
   const comparison = getComparisonMonths(month).map((key) => ({
@@ -83,17 +84,7 @@ export default function AnalyticsPage({ client, snapshot, transactionOverlay }: 
                         <span className="block h-full rounded-full bg-sky-300/80" style={{ width: `${totalExpense > 0n ? Number(total * 10000n / totalExpense) / 100 : 0}%` }} />
                       </span>
                     </summary>
-                    <ol aria-label={`Транзакції в категорії «${name}»`} className="divide-y divide-zinc-800 border-t border-zinc-800">
-                      {entries.map(({ transaction, amount }) => (
-                        <li key={transaction.id} className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 px-3 py-2.5 text-sm [overflow-wrap:anywhere]">
-                          <span className="min-w-0">
-                            <span className="block font-medium">{getTransactionLabels(transaction, category).title}</span>
-                            <time dateTime={transaction.date} className="mt-0.5 block text-xs text-zinc-400">{formatDate(transaction.date)}</time>
-                          </span>
-                          <span className="font-medium tabular-nums">{formatKopecks(amount)}</span>
-                        </li>
-                      ))}
-                    </ol>
+                    <CategoryExpenseGroups category={category} entries={entries} subcategories={subcategories} />
                   </details>
                 </li>
               )

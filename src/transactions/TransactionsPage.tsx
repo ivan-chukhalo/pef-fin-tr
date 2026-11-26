@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { categoryColorStyle } from '../categories/color'
 import type { Category } from '../categories/data'
+import { getSubcategoryName } from '../categories/subcategories'
 import { createTransactionsCsv } from '../csv/exportTransactions'
 import { formatDate, formatMonth, todayInKyiv } from '../lib/dates'
 import { downloadFile } from '../lib/download'
@@ -18,10 +19,11 @@ const selectClass = 'w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-95
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const usdFormatter = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'USD' })
 
-function TransactionRow({ transaction, accountName, category, canChange, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
+function TransactionRow({ transaction, accountName, category, subcategoryName, canChange, confirming, isDeleting, onConfirm, onCancel, onDelete }: {
   transaction: Transaction
   accountName: string
   category: Category | undefined
+  subcategoryName: string
   canChange: boolean
   confirming: boolean
   isDeleting: boolean
@@ -40,6 +42,7 @@ function TransactionRow({ transaction, accountName, category, canChange, confirm
           <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 [overflow-wrap:anywhere]">
             {categoryLabel}
+            <span>{subcategoryName}</span>
             <span>{typeLabel}</span>
             {syncLabel}
             <span>{accountName}</span>
@@ -150,6 +153,7 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
     .sort((first, second) => second.localeCompare(first))
   const accounts = new Map(data.accounts.map((account) => [account.id, account]))
   const categories = new Map(data.categories.map((category) => [category.id, category]))
+  const subcategories = new Map(data.subcategories.map((subcategory) => [subcategory.id, subcategory]))
   const changes = new Map(transactionOverlay?.changes.map((change) => [change.id, change]))
   const filtered = data.transactions.filter((transaction) =>
     (!month || transaction.date.startsWith(`${month}-`)) &&
@@ -158,7 +162,7 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
   )
 
   function exportCsv() {
-    const csv = createTransactionsCsv(filtered, accounts, categories)
+    const csv = createTransactionsCsv(filtered, accounts, categories, subcategories)
     const filename = `pef-fin-tr-transactions-${formatDate(todayInKyiv())}.csv`
     downloadFile(new Blob([csv], { type: 'text/csv;charset=utf-8' }), filename)
   }
@@ -199,7 +203,8 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
       </fieldset>
 
       {deleteError && <p role="alert" className="text-sm text-rose-300">Не вдалося видалити транзакцію. Спробуйте ще раз.</p>}
-      <TransactionConflicts changes={transactionOverlay?.changes ?? []} accounts={accounts} categories={categories} onResolve={resolveTransactionChange} />
+      <TransactionConflicts changes={transactionOverlay?.changes ?? []} accounts={accounts} categories={categories}
+        subcategories={subcategories} onResolve={resolveTransactionChange} />
       {filtered.length ? (
         <ul aria-label="Список транзакцій" className="grid gap-3">
           {filtered.map((transaction) => (
@@ -208,6 +213,7 @@ export default function TransactionsPage({ client, snapshot, transactionOverlay,
               transaction={transaction}
               accountName={accounts.get(transaction.account_id)?.name ?? 'Рахунок'}
               category={categories.get(transaction.category_id)}
+              subcategoryName={getSubcategoryName(transaction.subcategory_id, subcategories)}
               canChange={!changes.get(transaction.id)?.attempted && !changes.get(transaction.id)?.conflict
                 && changes.get(transaction.id)?.original.status !== 'planned'}
               confirming={confirmingId === transaction.id}

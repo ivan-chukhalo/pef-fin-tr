@@ -15,7 +15,7 @@ export type RecurringSchedule = {
 export type RecurringTemplateFields = Omit<TransactionFields, 'date' | 'status'> & RecurringSchedule
 export type RecurringTemplate = RecurringTemplateFields & { id: string }
 
-const columns = 'id,account_id,category_id,type,currency,amount_original_kop::text,rate::text,purchase_name,comment,frequency,start_date,occurrences'
+const columns = 'id,account_id,category_id,subcategory_id,type,currency,amount_original_kop::text,rate::text,purchase_name,comment,frequency,start_date,occurrences'
 const tableName = 'recurring_templates'
 
 export function loadRecurringTemplates(client: SupabaseClient, signal: AbortSignal, snapshot?: OfflineSnapshot) {

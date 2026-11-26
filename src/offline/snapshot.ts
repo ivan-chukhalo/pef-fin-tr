@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Account } from '../accounts/data'
 import type { CategoryBudgetLimit } from '../analytics/budgets'
 import type { Category } from '../categories/data'
+import type { Subcategory } from '../categories/subcategories'
 import type { OperationStatusFilter } from '../lib/operations'
 import type { RecurringTemplate } from '../recurring/data'
 import { isBackup, summaryKeys } from '../settings/backup'
@@ -12,6 +13,7 @@ export type OfflineSnapshot = {
   exported_at: string
   accounts: Account[]
   categories: Category[]
+  subcategories?: Subcategory[]
   transactions: Transaction[]
   transfers: Transfer[]
   recurring_templates: RecurringTemplate[]
@@ -93,7 +95,7 @@ export async function downloadSnapshot(client: SupabaseClient, userId: string, s
   // The authenticated backup RPC reads every table in one database snapshot.
   const { data, error } = await client.rpc('export_backup').abortSignal(signal)
   if (error) throw error
-  const ownedCollections = [...summaryKeys, 'category_history', 'category_budget_limits'] as const
+  const ownedCollections = [...summaryKeys, 'category_history', 'category_budget_limits', 'subcategories'] as const
   if (!isBackup(data) || ownedCollections.some((table) =>
     (data[table] ?? []).some((row) => row.user_id !== userId),
   )) throw new Error('Invalid offline snapshot')

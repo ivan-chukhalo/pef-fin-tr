@@ -1,3 +1,4 @@
+import { getSubcategoryName, type Subcategory } from '../categories/subcategories'
 import { formatDate } from '../lib/dates'
 import { formatBalanceInput } from '../lib/money'
 import type { Transaction } from '../transactions/data'
@@ -8,10 +9,11 @@ function escapeText(value: string) {
   return /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
-const headers = ['Дата', 'Тип операції', 'Назва', 'Категорія', 'Рахунок', 'Сума', 'Валюта', 'Курс', 'Сума в гривнях', 'Коментар', 'ID операції']
+const headers = ['Дата', 'Тип операції', 'Назва', 'Категорія', 'Підкатегорія', 'Рахунок', 'Сума', 'Валюта', 'Курс', 'Сума в гривнях', 'Коментар', 'ID операції']
 
 export function createTransactionsCsv(transactions: readonly Transaction[],
-  accounts: ReadonlyMap<string, { name: string }>, categories: ReadonlyMap<string, { name: string }>) {
+  accounts: ReadonlyMap<string, { name: string }>, categories: ReadonlyMap<string, { name: string }>,
+  subcategories: ReadonlyMap<string, Subcategory>) {
   const lines = transactions.map((transaction) => {
     const expense = transaction.type === 'expense'
     const sign = expense ? -1n : 1n
@@ -20,6 +22,7 @@ export function createTransactionsCsv(transactions: readonly Transaction[],
       expense ? 'Витрата' : 'Дохід',
       escapeText(transaction.purchase_name ?? ''),
       escapeText(categories.get(transaction.category_id)?.name ?? ''),
+      escapeText(getSubcategoryName(transaction.subcategory_id, subcategories)),
       escapeText(accounts.get(transaction.account_id)?.name ?? ''),
       formatBalanceInput(sign * BigInt(transaction.amount_original_kop)),
       transaction.currency,

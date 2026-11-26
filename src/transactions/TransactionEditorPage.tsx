@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
+import { loadSubcategories } from '../categories/subcategoryData'
 import type { OperationStatus } from '../lib/operations'
 import { canReachSupabase } from '../lib/supabase'
 import { useLoadData } from '../lib/useLoadData'
@@ -28,15 +29,16 @@ function TransactionEditor({ client, snapshot, transactionOverlay, pendingTransf
   const [openedOffline, setOpenedOffline] = useState(!!snapshot)
   const saving = useRef(false)
   const load = useCallback(async (signal: AbortSignal) => {
-    const [accountData, categories, transaction, lastUsdRate] = await Promise.all([
+    const [accountData, categories, subcategories, transaction, lastUsdRate] = await Promise.all([
       transactionId
         ? loadAccounts(client, signal, snapshot).then((accounts) => ({ accounts, changesByAccount: null }))
         : loadAccountOverview(client, signal, snapshot, transactionOverlay, pendingTransfers),
       loadCategories(client, signal, snapshot),
+      loadSubcategories(client, signal, snapshot),
       transactionId ? loadTransaction(client, transactionId, signal, confirming ? 'planned' : 'all', snapshot, transactionOverlay) : null,
       loadLastUsdRate(client, signal, snapshot, transactionOverlay),
     ])
-    return { ...accountData, categories, transaction, lastUsdRate }
+    return { ...accountData, categories, subcategories: subcategories ?? [], transaction, lastUsdRate }
   }, [client, transactionId, confirming, snapshot, transactionOverlay, pendingTransfers])
   const { data, hasError, retry } = useLoadData(load)
   if (data && original === undefined) setOriginal(data.transaction)

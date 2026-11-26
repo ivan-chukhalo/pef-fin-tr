@@ -218,6 +218,7 @@ export default function MonobankPage({ client }: { client: SupabaseClient }) {
               accountId={ledger.id}
               accounts={accounts}
               categories={categories}
+              subcategories={data.options.subcategories}
               transactions={transactions}
               transfers={transfers}
               busy={disabled}

@@ -1,4 +1,5 @@
 import { isCategoryColor } from '../categories/color'
+import { defaultSubcategoryId, defaultSubcategoryName } from '../categories/subcategories'
 import { isDateOnOrBefore } from '../lib/dates'
 import { fitsDatabaseKopecks } from '../lib/money'
 
@@ -13,11 +14,12 @@ const summaryLabels = {
 type SummaryKey = keyof typeof summaryLabels
 type BackupRow = Record<string, unknown>
 export type BackupSummary = Record<SummaryKey, number>
-export type BackupVersion = BackupSummary & { id: string; created_at: string; category_budget_limits?: number }
+export type BackupVersion = BackupSummary & { id: string; created_at: string; category_budget_limits?: number; subcategories?: number }
 export type Backup = Record<SummaryKey | 'category_history', BackupRow[]> & {
   format_version: number
   exported_at: string
   category_budget_limits?: BackupRow[]
+  subcategories?: BackupRow[]
 }
 
 export const summaryKeys = Object.keys(summaryLabels) as SummaryKey[]
@@ -41,6 +43,8 @@ export function isBackup(value: unknown): value is Backup {
 
   const limits = value.category_budget_limits
   if (limits !== undefined && (!Array.isArray(limits) || !limits.every(isBudgetLimit))) return false
+  const subcategories = value.subcategories
+  if (subcategories !== undefined && (!Array.isArray(subcategories) || !subcategories.every(isSubcategory))) return false
 
   return collections.every((name) => {
     const rows = value[name]
@@ -51,6 +55,7 @@ export function isBackup(value: unknown): value is Backup {
 export function isBackupVersion(value: unknown): value is BackupVersion {
   return isRecord(value) && typeof value.id === 'string' && uuid.test(value.id) &&
     (value.category_budget_limits === undefined || isRowCount(value.category_budget_limits)) &&
+    (value.subcategories === undefined || isRowCount(value.subcategories)) &&
     isTimestamp(value.created_at) && summaryKeys.every((key) => isRowCount(value[key]))
 }
 
@@ -68,6 +73,15 @@ function isBudgetLimit(value: unknown) {
   return typeof effective_month === 'string' && effective_month.endsWith('-01') && isDateOnOrBefore(effective_month)
     && (amount_kop === null || (typeof amount_kop === 'string' && /^[1-9]\d{0,18}$/.test(amount_kop)
       && fitsDatabaseKopecks(BigInt(amount_kop))))
+}
+
+function isSubcategory(value: unknown) {
+  if (!isRecord(value)) return false
+  const { category_id, category_type, name, is_hidden } = value
+  const id = keyOf(value.id)
+  return !!id && id !== defaultSubcategoryId && !!keyOf(category_id) && (category_type === 'income' || category_type === 'expense')
+    && typeof name === 'string' && !!name.trim() && name.trim().toLocaleLowerCase('uk-UA') !== defaultSubcategoryName.toLocaleLowerCase('uk-UA')
+    && typeof is_hidden === 'boolean'
 }
 
 function indexRows(rows: BackupRow[]) {
@@ -110,6 +124,18 @@ export function parseBackup(text: string): Backup {
     throw new Error('У резервній копії є категорія з некоректним кольором.')
   }
 
+  const subcategories = indexRows(backup.subcategories ?? [])
+  const subcategoryNames = new Set<string>()
+  for (const subcategory of subcategories.values()) {
+    const categoryId = keyOf(subcategory.category_id)
+    const name = String(subcategory.name).trim().toLocaleLowerCase('uk-UA')
+    const key = `${categoryId}/${name}`
+    if (ids.categories.get(categoryId)?.type !== subcategory.category_type || subcategoryNames.has(key)) {
+      throw new Error('У копії є підкатегорія з некоректною категорією або повторною назвою.')
+    }
+    subcategoryNames.add(key)
+  }
+
   const limits = backup.category_budget_limits ?? []
   indexRows(limits)
   const limitMonths = new Set<string>()
@@ -128,6 +154,10 @@ export function parseBackup(text: string): Backup {
     const category = ids.categories.get(categoryId)
     if (!ids.accounts.has(keyOf(row.account_id)) || !category || category.type !== row.type) {
       throw new Error('Транзакція або шаблон посилається на відсутній рахунок чи категорію.')
+    }
+    const subcategoryId = row.subcategory_id == null ? defaultSubcategoryId : keyOf(row.subcategory_id)
+    if (subcategoryId !== defaultSubcategoryId && keyOf(subcategories.get(subcategoryId)?.category_id) !== categoryId) {
+      throw new Error('Транзакція або шаблон посилається на відсутню чи чужу підкатегорію.')
     }
     referencedCategories.add(categoryId)
   }

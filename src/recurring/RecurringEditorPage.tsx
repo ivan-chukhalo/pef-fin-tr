@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { loadAccountOverview, loadAccounts } from '../accounts/data'
 import { loadCategories } from '../categories/data'
+import { loadSubcategories } from '../categories/subcategoryData'
 import { useLoadData } from '../lib/useLoadData'
 import type { OfflinePageProps } from '../offline/snapshot'
 import { loadLastUsdRate } from '../transactions/data'
@@ -15,15 +16,16 @@ function RecurringEditor({ client, templateId, transactionOverlay, pendingTransf
   const [saveError, setSaveError] = useState(false)
   const saving = useRef(false)
   const load = useCallback(async (signal: AbortSignal) => {
-    const [accountData, categories, recurringTemplate, lastUsdRate] = await Promise.all([
+    const [accountData, categories, subcategories, recurringTemplate, lastUsdRate] = await Promise.all([
       templateId
         ? loadAccounts(client, signal).then((accounts) => ({ accounts, changesByAccount: null }))
         : loadAccountOverview(client, signal, undefined, transactionOverlay, pendingTransfers),
       loadCategories(client, signal),
+      loadSubcategories(client, signal),
       templateId ? loadRecurringTemplate(client, templateId, signal) : null,
       loadLastUsdRate(client, signal, undefined, transactionOverlay),
     ])
-    return { ...accountData, categories, recurringTemplate, lastUsdRate }
+    return { ...accountData, categories, subcategories: subcategories ?? [], recurringTemplate, lastUsdRate }
   }, [client, templateId, transactionOverlay, pendingTransfers])
   const { data, hasError, retry } = useLoadData(load)
 

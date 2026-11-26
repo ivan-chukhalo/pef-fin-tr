@@ -4,6 +4,8 @@ import AccountPicker from '../accounts/AccountPicker'
 import { categoryColorStyle } from '../categories/color'
 import { getAccountBalance, type Account } from '../accounts/data'
 import { getAvailableCategories, type Category, type CategoryType } from '../categories/data'
+import SubcategorySelect from '../categories/SubcategorySelect'
+import { defaultSubcategoryId, getSubcategoryId, type Subcategory } from '../categories/subcategories'
 import DateInput from '../lib/DateInput'
 import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../lib/dates'
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
@@ -30,6 +32,7 @@ type TransactionFormProps = {
   accounts: Account[]
   changesByAccount: ReadonlyMap<string, bigint> | null
   categories: Category[]
+  subcategories: Subcategory[]
   lastUsdRate: string
   isSaving: boolean
   saveError: boolean
@@ -57,7 +60,7 @@ function scheduleFitsCalendar(date: string, frequency: RecurringSchedule['freque
 }
 
 export default function TransactionForm(props: TransactionFormProps) {
-  const { accounts, changesByAccount, categories, lastUsdRate, isSaving, saveError } = props
+  const { accounts, changesByAccount, categories, subcategories, lastUsdRate, isSaving, saveError } = props
   const recurring = props.recurringTemplate !== undefined
   const transaction = recurring ? null : props.transaction
   const template = props.recurringTemplate
@@ -66,6 +69,7 @@ export default function TransactionForm(props: TransactionFormProps) {
   const activeAccounts = accounts.filter((account) => !account.is_hidden)
   const [accountId, setAccountId] = useState(details?.account_id ?? (activeAccounts.length === 1 ? activeAccounts[0].id : ''))
   const [categoryId, setCategoryId] = useState(details?.category_id ?? '')
+  const [subcategoryId, setSubcategoryId] = useState(getSubcategoryId(details?.subcategory_id))
   const [type, setType] = useState<CategoryType>(details?.type ?? 'expense')
   const [status, setStatus] = useState(recurring ? 'planned' : props.initialStatus)
   const [currency, setCurrency] = useState<Currency>(details?.currency ?? 'UAH')
@@ -150,6 +154,7 @@ export default function TransactionForm(props: TransactionFormProps) {
     const commonFields = {
       account_id: accountId,
       category_id: categoryId,
+      subcategory_id: subcategoryId,
       type,
       currency,
       amount_original_kop: amount.toString(),
@@ -187,6 +192,7 @@ export default function TransactionForm(props: TransactionFormProps) {
           <select id="transaction-type" className={fieldClass} value={type} disabled={confirming} onChange={(event) => {
             setType(event.target.value === 'income' ? 'income' : 'expense')
             setCategoryId('')
+            setSubcategoryId(defaultSubcategoryId)
           }}>
             <option value="expense">Витрата</option>
             <option value="income">Дохід</option>
@@ -270,11 +276,18 @@ export default function TransactionForm(props: TransactionFormProps) {
           </Field>
         )}
         <Field id="transaction-category" label="Категорія">
-          <select id="transaction-category" className={fieldClass} style={categoryColorStyle(selectedCategory?.color)} value={categoryId} disabled={confirming} onChange={(event) => setCategoryId(event.target.value)} required>
+          <select id="transaction-category" className={fieldClass} style={categoryColorStyle(selectedCategory?.color)} value={categoryId} disabled={confirming} onChange={(event) => {
+            setCategoryId(event.target.value)
+            setSubcategoryId(defaultSubcategoryId)
+          }} required>
             <option value="" disabled>Оберіть категорію</option>
             {keptCategory && <option value={keptCategory.id} disabled>{keptCategory.name} (приховано)</option>}
             {availableCategories.map(({ id, name }) => <option key={id} value={id}>{name}</option>)}
           </select>
+        </Field>
+        <Field id="transaction-subcategory" label="Підкатегорія">
+          <SubcategorySelect id="transaction-subcategory" className={fieldClass} categoryId={categoryId} subcategories={subcategories}
+            value={subcategoryId} onChange={setSubcategoryId} disabled={confirming || !categoryId} />
         </Field>
         <Field id="transaction-comment" label="Коментар (необов’язково)" wide>
           <textarea id="transaction-comment" name="comment" rows={2} className={fieldClass} defaultValue={details?.comment ?? ''} readOnly={confirming} />
