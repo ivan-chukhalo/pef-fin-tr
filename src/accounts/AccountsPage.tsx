@@ -2,7 +2,7 @@ import type { OfflinePageProps } from '../offline/snapshot'
 import { useEffect, useRef, useState } from 'react'
 import { formatKopecks } from '../lib/money'
 import AccountForm from './AccountForm'
-import { getAccountBalance, loadAccountOverview, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
+import { deleteAccount, getAccountBalance, loadAccountOverview, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
@@ -10,11 +10,18 @@ type AccountListProps = {
   accounts: Account[]
   changesByAccount: AccountOverview['changesByAccount']
   isSaving: boolean
+  readOnly: boolean
+  accountToDelete: string | null
+  deleteError?: string
   onEdit: (account: Account) => void
   onToggleHidden: (account: Account) => void
+  onChooseDeletion: (id: string | null) => void
+  onDelete: (account: Account) => void
 }
 
-function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHidden }: AccountListProps) {
+function AccountList({
+  accounts, changesByAccount, isSaving, readOnly, accountToDelete, deleteError, onEdit, onToggleHidden, onChooseDeletion, onDelete,
+}: AccountListProps) {
   return (
     <ul className="grid gap-3 xl:grid-cols-2">
       {accounts.map((account) => {
@@ -50,7 +57,28 @@ function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHid
               >
                 {hideLabel}
               </button>
+              {!readOnly && accountToDelete !== account.id && (
+                <button type="button" className={buttonClass} disabled={isSaving}
+                  aria-label={`Видалити рахунок ${account.name}`} onClick={() => onChooseDeletion(account.id)}>
+                  Видалити
+                </button>
+              )}
             </div>
+            {!readOnly && accountToDelete === account.id && (
+              <div className="space-y-2 rounded-xl border border-rose-900/70 bg-rose-950/20 p-3 sm:col-span-2">
+                <p className="text-sm text-rose-100 [overflow-wrap:anywhere]">Видалити рахунок «{account.name}»?</p>
+                {deleteError && <p role="alert" className="text-sm text-rose-300">{deleteError}</p>}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={isSaving} onClick={() => onDelete(account)}
+                    className="min-h-11 rounded-xl bg-rose-300 px-3 text-sm font-semibold text-zinc-950 hover:bg-rose-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300 disabled:opacity-50">
+                    Так, видалити
+                  </button>
+                  <button type="button" className={buttonClass} disabled={isSaving} onClick={() => onChooseDeletion(null)}>
+                    Скасувати
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         )
       })}
@@ -58,11 +86,12 @@ function AccountList({ accounts, changesByAccount, isSaving, onEdit, onToggleHid
   )
 }
 
-export default function AccountsPage({ client, snapshot, transactionOverlay, pendingTransfers }: OfflinePageProps) {
+export default function AccountsPage({ client, snapshot, transactionOverlay, pendingTransfers, transferChanges }: OfflinePageProps) {
   const [overview, setOverview] = useState<AccountOverview | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
   const [editor, setEditor] = useState<{ id: string; account?: Account } | null>(null)
+  const [accountToDelete, setAccountToDelete] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null)
   const saving = useRef(false)
@@ -85,11 +114,13 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
 
   function openEditor(account?: Account) {
     setFeedback(null)
+    setAccountToDelete(null)
     setEditor({ id: account?.id ?? crypto.randomUUID(), account })
   }
 
   async function applyAccountChange(
-    request: () => Promise<Account>,
+    id: string,
+    request: () => Promise<Account | null>,
     successMessage: string,
     errorMessage: string,
   ): Promise<boolean> {
@@ -101,14 +132,19 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
 
     try {
       const account = await request()
-      setOverview((current) => current && {
-        ...current,
-        accounts: [...current.accounts.filter(({ id }) => id !== account.id), account],
+      setOverview((current) => {
+        if (!current) return current
+        const otherAccounts = current.accounts.filter((row) => row.id !== id)
+        return { ...current, accounts: account ? [...otherAccounts, account] : otherAccounts }
       })
       setFeedback({ message: successMessage, isError: false })
       return true
-    } catch {
-      setFeedback({ message: errorMessage, isError: true })
+    } catch (error) {
+      const linked = error && typeof error === 'object' && 'code' in error && error.code === '23503'
+      setFeedback({
+        message: linked ? 'Рахунок пов’язаний з операцією або шаблоном. Його можна приховати.' : errorMessage,
+        isError: true,
+      })
       return false
     } finally {
       saving.current = false
@@ -120,6 +156,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
     if (!editor) return
 
     const saved = await applyAccountChange(
+      editor.id,
       () => saveAccount(client, editor.id, fields, !editor.account),
       editor.account ? 'Рахунок оновлено.' : 'Рахунок додано.',
       'Не вдалося зберегти рахунок. Спробуйте ще раз.',
@@ -129,11 +166,36 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
 
   function handleToggleHidden(account: Account) {
     const isHidden = !account.is_hidden
+    setAccountToDelete(null)
     void applyAccountChange(
+      account.id,
       () => setAccountHidden(client, account.id, isHidden),
       isHidden ? 'Рахунок приховано.' : 'Рахунок відновлено.',
       'Не вдалося змінити видимість рахунку. Спробуйте ще раз.',
     )
+  }
+
+  function chooseDeletion(id: string | null) {
+    setFeedback(null)
+    setAccountToDelete(id)
+  }
+
+  async function handleDelete({ id }: Account) {
+    const hasPendingTransfer = (fields: { from_account_id: string; to_account_id: string } | null) =>
+      fields?.from_account_id === id || fields?.to_account_id === id
+    const hasPendingChanges = transactionOverlay?.drafts.some((draft) => draft.account_id === id)
+      || transactionOverlay?.changes.some(({ original, next }) => original.account_id === id || next?.account_id === id)
+      || pendingTransfers?.some(({ fields }) => hasPendingTransfer(fields))
+      || transferChanges?.some(({ original, next }) => hasPendingTransfer(original) || hasPendingTransfer(next))
+    if (hasPendingChanges) {
+      setFeedback({ message: 'Спочатку синхронізуй або прибери з черги операції для цього рахунку.', isError: true })
+      return
+    }
+    const deleted = await applyAccountChange(id, async () => {
+      await deleteAccount(client, id)
+      return null
+    }, 'Рахунок видалено.', 'Не вдалося видалити рахунок. Спробуй ще раз.')
+    if (deleted) setAccountToDelete(null)
   }
 
   if (!overview) {
@@ -161,9 +223,14 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
   const hiddenAccounts = sortedAccounts.filter((account) => account.is_hidden)
   const listProps = {
     changesByAccount: overview.changesByAccount,
-    isSaving: isSaving || !!snapshot,
+    isSaving: isSaving || !!snapshot || !!editor,
+    readOnly: !!snapshot,
+    accountToDelete,
+    deleteError: feedback?.isError ? feedback.message : undefined,
     onEdit: openEditor,
     onToggleHidden: handleToggleHidden,
+    onChooseDeletion: chooseDeletion,
+    onDelete: handleDelete,
   }
 
   return (
@@ -185,7 +252,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
           }}
         />
       )}
-      {feedback && (
+      {feedback && (!accountToDelete || !feedback.isError) && (
         <p role={feedback.isError ? 'alert' : 'status'} className={`text-sm ${feedback.isError ? 'text-rose-300' : 'text-emerald-200'}`}>
           {feedback.message}
         </p>

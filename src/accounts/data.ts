@@ -121,3 +121,8 @@ export async function setAccountHidden(
   if (error) throw error
   return data
 }
+
+export async function deleteAccount(client: SupabaseClient, id: string): Promise<void> {
+  const { error } = await client.from('accounts').delete().eq('id', id)
+  if (error) throw error
+}
