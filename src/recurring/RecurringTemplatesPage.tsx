@@ -6,7 +6,7 @@ import { formatKopecks } from '../lib/money'
 import { useLoadData } from '../lib/useLoadData'
 import { loadTransactionOptions } from '../transactions/data'
 import { getTransactionLabels } from '../transactions/labels'
-import { deleteRecurringTemplate, frequencyLabels, loadRecurringTemplates, recurringPath } from './data'
+import { deleteRecurringTemplate, loadRecurringTemplates, recurringFrequencies, recurringPath } from './data'
 
 const buttonClass = 'inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 const primaryClass = 'inline-flex min-h-11 items-center rounded-xl bg-emerald-300 px-4 text-sm font-semibold text-zinc-950 hover:bg-emerald-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300'
@@ -87,7 +87,7 @@ export default function RecurringTemplatesPage({ client, snapshot }: OfflinePage
                   {categoryLabel}
                   <span>{typeLabel}</span>
                   <span>{accountNames.get(template.account_id) ?? 'Рахунок'}</span>
-                  <span>{frequencyLabels[template.frequency]}</span>
+                  <span>{recurringFrequencies[template.frequency]?.label}</span>
                   <span>Операцій у шаблоні: {template.occurrences}</span>
                   <span>Початок <time dateTime={template.start_date}>{formatDate(template.start_date)}</time></span>
                 </div>

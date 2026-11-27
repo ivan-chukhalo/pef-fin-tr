@@ -14,7 +14,7 @@ import { formatDate, isDateOnOrBefore, nextCalendarDate, todayInKyiv } from '../
 import { formatBalanceInput, formatKopecks, parseHryvnias } from '../lib/money'
 import OperationDateField from '../lib/OperationDateField'
 import { getOperationDateError, getPlanningDate, type OperationStatus } from '../lib/operations'
-import { frequencyLabels, recurringPath, type RecurringSchedule, type RecurringTemplate, type RecurringTemplateFields } from '../recurring/data'
+import { isRecurringFrequency, recurringFrequencies, recurringPath, scheduleFitsCalendar, type RecurringTemplate, type RecurringTemplateFields } from '../recurring/data'
 import type { Currency, TransactionFields } from './data'
 import { convertToUah, parseExchangeRate } from './exchange'
 import { useNbuRate } from './useNbuRate'
@@ -53,16 +53,6 @@ type TransactionFormProps = {
   recurringTemplate: RecurringTemplate | null
   onSave: (fields: RecurringTemplateFields) => void
 })
-
-function scheduleFitsCalendar(date: string, frequency: RecurringSchedule['frequency'], occurrences: number) {
-  const last = new Date(`${date}T00:00:00Z`)
-  if (frequency === 'weekly') last.setUTCDate(last.getUTCDate() + (occurrences - 1) * 7)
-  else {
-    last.setUTCDate(1)
-    last.setUTCMonth(last.getUTCMonth() + occurrences - 1)
-  }
-  return last.getUTCFullYear() <= 9999
-}
 
 export default function TransactionForm(props: TransactionFormProps) {
   const { accounts, changesByAccount, categoryClient, lastUsdRate, isSaving, saveError } = props
@@ -177,7 +167,7 @@ export default function TransactionForm(props: TransactionFormProps) {
     if (recurring) {
       const frequency = fields.get('frequency')
       const occurrences = Number(fields.get('occurrences'))
-      if ((frequency !== 'weekly' && frequency !== 'monthly') || !Number.isInteger(occurrences) || occurrences < 1 || occurrences > 120) {
+      if (!isRecurringFrequency(frequency) || !Number.isInteger(occurrences) || occurrences < 1 || occurrences > 120) {
         setErrorMessage('Оберіть частоту та вкажіть від 1 до 120 повторень.')
         return
       }
@@ -217,7 +207,7 @@ export default function TransactionForm(props: TransactionFormProps) {
             </Field>
             <Field id="recurring-frequency" label="Частота">
               <select id="recurring-frequency" name="frequency" className={fieldClass} defaultValue={template?.frequency ?? 'monthly'}>
-                {Object.entries(frequencyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {Object.entries(recurringFrequencies).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </Field>
             <Field id="recurring-occurrences" label="Кількість операцій">

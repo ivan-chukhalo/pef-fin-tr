@@ -4,12 +4,37 @@ import type { OfflineSnapshot } from '../offline/snapshot'
 import type { TransactionFields } from '../transactions/data'
 
 export const recurringPath = '/transactions/recurring'
-export const frequencyLabels = { weekly: 'Щотижня', monthly: 'Щомісяця' }
+export const recurringFrequencies = {
+  weekly: { label: 'Щотижня', months: null },
+  monthly: { label: 'Щомісяця', months: 1 },
+  every_two_months: { label: 'Що два місяці', months: 2 },
+  quarterly: { label: 'Щоквартально', months: 3 },
+  semiannual: { label: 'Щопівроку', months: 6 },
+  yearly: { label: 'Щороку', months: 12 },
+} as const
+
+type RecurringFrequency = keyof typeof recurringFrequencies
+
+export function isRecurringFrequency(value: unknown): value is RecurringFrequency {
+  return typeof value === 'string' && Object.hasOwn(recurringFrequencies, value)
+}
 
 export type RecurringSchedule = {
-  frequency: keyof typeof frequencyLabels
+  frequency: RecurringFrequency
   start_date: string
   occurrences: number
+}
+
+export function scheduleFitsCalendar(date: string, frequency: RecurringFrequency, occurrences: number) {
+  const last = new Date(`${date}T00:00:00Z`)
+  const repeats = occurrences - 1
+  const months = recurringFrequencies[frequency].months
+  if (months === null) last.setUTCDate(last.getUTCDate() + repeats * 7)
+  else {
+    last.setUTCDate(1)
+    last.setUTCMonth(last.getUTCMonth() + repeats * months)
+  }
+  return last.getUTCFullYear() <= 9999
 }
 
 export type RecurringTemplateFields = Omit<TransactionFields, 'date' | 'status'> & RecurringSchedule
