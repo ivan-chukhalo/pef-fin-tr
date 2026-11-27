@@ -283,9 +283,6 @@ export default function AppShell({ client, snapshot, offlineReadiness, transacti
                         <dt className="text-sm text-zinc-400">Основна валюта</dt>
                         <dd className="mt-1 font-medium">Гривня (UAH)</dd>
                       </dl>
-                      <Link to={categories.path} className={`inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 ${focusClass}`}>
-                        Керувати категоріями
-                      </Link>
                       {!readOnly && import.meta.env.PROD && (
                         <a href="/update.html" className={`inline-flex min-h-11 items-center rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 ${focusClass}`}>
                           Оновити застосунок
