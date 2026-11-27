@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getAccountBalanceChanges } from '../accounts/data'
+import { getAccountBalanceChanges, getTotalAccountBalance } from '../accounts/data'
 import { isOverdueOperation } from '../lib/operations'
 import type { OfflineSnapshot, TransactionOverlay } from '../offline/snapshot'
 import { loadTransactionOptions, loadTransactions, type Transaction } from '../transactions/data'
@@ -32,9 +32,16 @@ export function getForecast(data: ForecastData, today: string, date: string) {
 
   const transactions = data.transactions.filter(throughDate)
   const transfers = data.transfers.filter(throughDate)
+  const changesByAccount = getAccountBalanceChanges(transactions, transfers)
+  const currentChanges = getAccountBalanceChanges(
+    transactions.filter(({ status }) => status === 'confirmed'),
+    transfers.filter(({ status }) => status === 'confirmed'),
+  )
 
   return {
-    changesByAccount: getAccountBalanceChanges(transactions, transfers),
+    changesByAccount,
+    currentBalance: getTotalAccountBalance(data.accounts, currentChanges),
+    forecastBalance: getTotalAccountBalance(data.accounts, changesByAccount),
     periodTransactions: transactions.filter(inPeriod),
     periodTransfers: transfers.filter(inPeriod),
     overdueTransactions: transactions.filter(pastDue),

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { fitsDatabaseKopecks, formatKopecks } from '../lib/money'
 import type { OperationStatus } from '../lib/operations'
 import AccountForm from './AccountForm'
-import { deleteAccount, getAccountBalance, loadAccountOverview, loadConfirmedBalanceChange, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
+import { deleteAccount, getAccountBalance, getTotalAccountBalance, loadAccountOverview, loadConfirmedBalanceChange, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
@@ -245,7 +245,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
   )
   const visibleAccounts = sortedAccounts.filter((account) => !account.is_hidden)
   const hiddenAccounts = sortedAccounts.filter((account) => account.is_hidden)
-  const totalBalance = overview.accounts.reduce((total, account) => total + getAccountBalance(account, overview.changesByAccount), 0n)
+  const totalBalance = getTotalAccountBalance(overview.accounts, overview.changesByAccount)
   const listProps = {
     changesByAccount: overview.changesByAccount,
     isSaving: isSaving || !!snapshot || !!editor,

@@ -9,6 +9,7 @@ import OperationList, { type OperationSort } from '../transactions/OperationList
 import type { QueueTransactionChange } from '../transactions/TransactionEditorPage'
 import type { QueueTransferChange } from '../transfers/data'
 import { getForecast, loadForecastData, type ForecastData } from './data'
+import ForecastBalanceSummary from './ForecastBalanceSummary'
 
 const sortOptions = [
   { value: 'date', label: 'За датою' },
@@ -25,11 +26,13 @@ function ForecastResults({ data, today, date, queueTransactionChange, queueTrans
   sortBy: OperationSort
   onSortChange: (sort: OperationSort) => void
 }) {
-  const { changesByAccount, periodTransactions, periodTransfers, overdueTransactions, overdueTransfers } = getForecast(data, today, date)
+  const { changesByAccount, currentBalance, forecastBalance, periodTransactions, periodTransfers, overdueTransactions, overdueTransfers } = getForecast(data, today, date)
   const activeAccounts = data.accounts.filter((account) => !account.is_hidden)
 
   return (
     <>
+      <ForecastBalanceSummary current={currentBalance} forecast={forecastBalance} date={date}
+        includesHidden={activeAccounts.length < data.accounts.length} />
       <section aria-labelledby="forecast-balances">
         <h2 id="forecast-balances" className="mb-3 text-lg font-semibold">Баланси рахунків</h2>
         {activeAccounts.length ? (
