@@ -6,13 +6,20 @@ const fieldClass = 'w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py
 
 type AccountFormProps = {
   account?: Account
+  currentBalance?: bigint
   isSaving: boolean
-  onSave: (fields: AccountFields) => void
+  onSave: (fields: AccountFields, desiredBalance?: bigint) => void
   onCancel: () => void
 }
 
-export default function AccountForm({ account, isSaving, onSave, onCancel }: AccountFormProps) {
+export default function AccountForm({ account, currentBalance, isSaving, onSave, onCancel }: AccountFormProps) {
   const [errorMessage, setErrorMessage] = useState('')
+  const initialBalance = BigInt(account?.initial_balance_kop ?? '0')
+  const balance = currentBalance ?? initialBalance
+  const [editInitialBalance, setEditInitialBalance] = useState(false)
+  const [currentInput, setCurrentInput] = useState(() => formatBalanceInput(balance))
+  const [initialInput, setInitialInput] = useState(() => formatBalanceInput(initialBalance))
+  const editCurrentBalance = !!account && !editInitialBalance
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -21,7 +28,9 @@ export default function AccountForm({ account, isSaving, onSave, onCancel }: Acc
     const fields = new FormData(event.currentTarget)
     const name = String(fields.get('name') ?? '').trim()
     const type = fields.get('type')
-    const initialBalance = parseHryvnias(String(fields.get('initialBalance') ?? ''))
+    const shownBalance = editCurrentBalance ? balance : initialBalance
+    const balanceText = String(fields.get('balance') ?? '')
+    const enteredBalance = balanceText === formatBalanceInput(shownBalance) ? shownBalance : parseHryvnias(balanceText)
 
     if (!name) {
       setErrorMessage('Введіть назву рахунку.')
@@ -31,13 +40,19 @@ export default function AccountForm({ account, isSaving, onSave, onCancel }: Acc
       setErrorMessage('Оберіть тип рахунку.')
       return
     }
-    if (initialBalance === null) {
+    if (enteredBalance === null) {
       setErrorMessage('Введіть суму в гривнях із не більш ніж двома знаками після коми.')
       return
     }
 
     setErrorMessage('')
-    onSave({ name, type, initial_balance_kop: initialBalance.toString() })
+    if (account && enteredBalance === shownBalance) {
+      onSave({ name, type })
+    } else if (editCurrentBalance) {
+      onSave({ name, type }, enteredBalance)
+    } else {
+      onSave({ name, type, initial_balance_kop: enteredBalance.toString() })
+    }
   }
 
   return (
@@ -58,16 +73,34 @@ export default function AccountForm({ account, isSaving, onSave, onCancel }: Acc
             <option value="cash">Готівка</option>
           </select>
         </label>
-        <label className="grid gap-2 text-sm font-medium">
-          Початковий баланс, грн
-          <input
-            name="initialBalance"
-            className={fieldClass}
-            autoComplete="off"
-            defaultValue={formatBalanceInput(BigInt(account?.initial_balance_kop ?? '0'))}
-            required
-          />
-        </label>
+        <div className="space-y-2">
+          <label className="grid gap-2 text-sm font-medium">
+            {editCurrentBalance ? 'Поточний баланс, грн' : 'Початковий баланс, грн'}
+            <input
+              name="balance"
+              className={fieldClass}
+              autoComplete="off"
+              value={editCurrentBalance ? currentInput : initialInput}
+              onChange={(event) => {
+                if (editCurrentBalance) setCurrentInput(event.target.value)
+                else setInitialInput(event.target.value)
+              }}
+              required
+            />
+          </label>
+          <p className="text-sm text-zinc-400">
+            {editCurrentBalance ? 'Вкажи фактичний залишок на рахунку.' : 'Залишок перед операціями, внесеними в облік.'}
+          </p>
+          {account && (
+            <button type="button" className="min-h-10 rounded-sm text-sm text-emerald-200 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              onClick={() => {
+                setErrorMessage('')
+                setEditInitialBalance(!editInitialBalance)
+              }}>
+              {editCurrentBalance ? 'Змінити початковий баланс' : 'Змінити поточний баланс'}
+            </button>
+          )}
+        </div>
       </fieldset>
 
       {errorMessage && <p role="alert" className="mt-4 text-sm text-rose-300">{errorMessage}</p>}

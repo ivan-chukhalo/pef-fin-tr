@@ -1,8 +1,9 @@
 import type { OfflinePageProps } from '../offline/snapshot'
 import { useEffect, useRef, useState } from 'react'
-import { formatKopecks } from '../lib/money'
+import { fitsDatabaseKopecks, formatKopecks } from '../lib/money'
+import type { OperationStatus } from '../lib/operations'
 import AccountForm from './AccountForm'
-import { deleteAccount, getAccountBalance, loadAccountOverview, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
+import { deleteAccount, getAccountBalance, loadAccountOverview, loadConfirmedBalanceChange, saveAccount, setAccountHidden, type Account, type AccountFields, type AccountOverview } from './data'
 
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-3 text-sm font-medium text-zinc-100 transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
@@ -90,7 +91,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
   const [overview, setOverview] = useState<AccountOverview | null>(null)
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [loadError, setLoadError] = useState(false)
-  const [editor, setEditor] = useState<{ id: string; account?: Account } | null>(null)
+  const [editor, setEditor] = useState<{ id: string; account?: Account; currentBalance?: bigint } | null>(null)
   const [accountToDelete, setAccountToDelete] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null)
@@ -115,7 +116,8 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
   function openEditor(account?: Account) {
     setFeedback(null)
     setAccountToDelete(null)
-    setEditor({ id: account?.id ?? crypto.randomUUID(), account })
+    const currentBalance = account && overview ? getAccountBalance(account, overview.changesByAccount) : undefined
+    setEditor({ id: account?.id ?? crypto.randomUUID(), account, currentBalance })
   }
 
   async function applyAccountChange(
@@ -142,7 +144,8 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
     } catch (error) {
       const linked = error && typeof error === 'object' && 'code' in error && error.code === '23503'
       setFeedback({
-        message: linked ? 'Рахунок пов’язаний з операцією або шаблоном. Його можна приховати.' : errorMessage,
+        message: linked ? 'Рахунок пов’язаний з операцією або шаблоном. Його можна приховати.'
+          : error instanceof RangeError ? 'Розрахований початковий баланс виходить за допустимий діапазон.' : errorMessage,
         isError: true,
       })
       return false
@@ -152,13 +155,29 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
     }
   }
 
-  async function handleSave(fields: AccountFields) {
+  async function handleSave(fields: AccountFields, desiredBalance?: bigint) {
     if (!editor) return
+    const { id, account } = editor
+    if (desiredBalance !== undefined && hasPendingOperations(id, 'confirmed')) {
+      setFeedback({ message: 'Спочатку синхронізуй зміни операцій для цього рахунку.', isError: true })
+      return
+    }
 
     const saved = await applyAccountChange(
-      editor.id,
-      () => saveAccount(client, editor.id, fields, !editor.account),
-      editor.account ? 'Рахунок оновлено.' : 'Рахунок додано.',
+      id,
+      async () => {
+        if (desiredBalance === undefined) return saveAccount(client, id, fields, !account)
+        const change = await loadConfirmedBalanceChange(client, id, AbortSignal.timeout(15_000))
+        const initialBalance = desiredBalance - change
+        if (!fitsDatabaseKopecks(initialBalance)) throw new RangeError('Initial balance is out of range')
+        const savedAccount = await saveAccount(client, id, { ...fields, initial_balance_kop: initialBalance.toString() }, false)
+        setOverview((current) => current && {
+          ...current,
+          changesByAccount: new Map(current.changesByAccount).set(id, change),
+        })
+        return savedAccount
+      },
+      desiredBalance !== undefined ? 'Поточний баланс оновлено.' : account ? 'Рахунок оновлено.' : 'Рахунок додано.',
       'Не вдалося зберегти рахунок. Спробуйте ще раз.',
     )
     if (saved) setEditor(null)
@@ -180,14 +199,19 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
     setAccountToDelete(id)
   }
 
-  async function handleDelete({ id }: Account) {
-    const hasPendingTransfer = (fields: { from_account_id: string; to_account_id: string } | null) =>
-      fields?.from_account_id === id || fields?.to_account_id === id
-    const hasPendingChanges = transactionOverlay?.drafts.some((draft) => draft.account_id === id)
-      || transactionOverlay?.changes.some(({ original, next }) => original.account_id === id || next?.account_id === id)
+  function hasPendingOperations(id: string, status?: OperationStatus) {
+    const hasPendingTransaction = (fields: { account_id: string; status: OperationStatus } | null) =>
+      fields?.account_id === id && (!status || fields.status === status)
+    const hasPendingTransfer = (fields: { from_account_id: string; to_account_id: string; status: OperationStatus } | null) =>
+      fields && (fields.from_account_id === id || fields.to_account_id === id) && (!status || fields.status === status)
+    return transactionOverlay?.drafts.some(hasPendingTransaction)
+      || transactionOverlay?.changes.some(({ original, next }) => hasPendingTransaction(original) || hasPendingTransaction(next))
       || pendingTransfers?.some(({ fields }) => hasPendingTransfer(fields))
       || transferChanges?.some(({ original, next }) => hasPendingTransfer(original) || hasPendingTransfer(next))
-    if (hasPendingChanges) {
+  }
+
+  async function handleDelete({ id }: Account) {
+    if (hasPendingOperations(id)) {
       setFeedback({ message: 'Спочатку синхронізуй або прибери з черги операції для цього рахунку.', isError: true })
       return
     }
@@ -244,6 +268,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
         <AccountForm
           key={editor.id}
           account={editor.account}
+          currentBalance={editor.currentBalance}
           isSaving={isSaving || !!snapshot}
           onSave={handleSave}
           onCancel={() => {

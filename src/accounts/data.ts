@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRows } from '../lib/readRows'
-import { mergePendingTransactions, type OfflineSnapshot, type TransactionOverlay } from '../offline/snapshot'
+import { downloadSnapshot, mergePendingTransactions, type OfflineSnapshot, type TransactionOverlay } from '../offline/snapshot'
 import { mergePendingTransfers, type QueuedTransfer } from '../transfers/data'
 
 export type AccountType = 'card' | 'cash'
@@ -14,7 +14,7 @@ export type Account = {
   created_at: string
 }
 
-export type AccountFields = Pick<Account, 'name' | 'type' | 'initial_balance_kop'>
+export type AccountFields = Pick<Account, 'name' | 'type'> & Partial<Pick<Account, 'initial_balance_kop'>>
 
 type TransactionAmount = {
   id: string
@@ -88,6 +88,14 @@ export async function loadAccountOverview(
   ])
 
   return { accounts, changesByAccount: getAccountBalanceChanges(mergePendingTransactions(transactions, overlay, 'confirmed'), transfers) }
+}
+
+export async function loadConfirmedBalanceChange(client: SupabaseClient, id: string, signal: AbortSignal): Promise<bigint> {
+  const { data: { session }, error } = await client.auth.getSession()
+  if (error || !session) throw error ?? new Error('Session unavailable')
+  const snapshot = await downloadSnapshot(client, session.user.id, signal)
+  const { changesByAccount } = await loadAccountOverview(client, signal, snapshot)
+  return changesByAccount.get(id) ?? 0n
 }
 
 export async function saveAccount(
