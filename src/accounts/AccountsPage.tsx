@@ -245,6 +245,7 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
   )
   const visibleAccounts = sortedAccounts.filter((account) => !account.is_hidden)
   const hiddenAccounts = sortedAccounts.filter((account) => account.is_hidden)
+  const totalBalance = overview.accounts.reduce((total, account) => total + getAccountBalance(account, overview.changesByAccount), 0n)
   const listProps = {
     changesByAccount: overview.changesByAccount,
     isSaving: isSaving || !!snapshot || !!editor,
@@ -259,6 +260,15 @@ export default function AccountsPage({ client, snapshot, transactionOverlay, pen
 
   return (
     <div className="mt-6 space-y-5">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+        <dl>
+          <dt className="text-sm text-zinc-300">Загальний баланс</dt>
+          <dd className={`mt-1 text-2xl font-semibold tabular-nums [overflow-wrap:anywhere] ${totalBalance < 0n ? 'text-rose-300' : ''}`}>
+            {formatKopecks(totalBalance)}
+          </dd>
+        </dl>
+        {hiddenAccounts.length > 0 && <p className="mt-1 text-sm text-zinc-400">Включно з прихованими рахунками.</p>}
+      </div>
       {!editor && !snapshot && (
         <button type="button" disabled={isSaving} className={buttonClass} onClick={() => openEditor()}>
           Додати рахунок
