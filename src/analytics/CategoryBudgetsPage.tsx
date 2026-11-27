@@ -7,7 +7,7 @@ import { useLoadData } from '../lib/useLoadData'
 import { useKyivToday } from '../lib/useKyivToday'
 import type { OfflinePageProps } from '../offline/snapshot'
 import { confirmCategoryBudgets, loadCategoryBudgetLimits, saveCategoryBudgetLimit } from './budgetData'
-import { getBudgetMonths, getCategoryBudgets, hasConfirmedBudgetMonth, previousBudgetMonth, type CategoryBudgetDraft } from './budgets'
+import { getBudgetMonths, getCategoryBudgets, hasConfirmedBudgetMonth, shiftBudgetMonth, type CategoryBudgetDraft } from './budgets'
 import CategoryBudgetEditor from './CategoryBudgetEditor'
 import CategoryBudgetProgress from './CategoryBudgetProgress'
 import { loadAnalytics } from './data'
@@ -37,11 +37,13 @@ export default function CategoryBudgetsPage({ client, snapshot, transactionOverl
     ) : <p role="status" className="mt-6 text-sm text-zinc-400">Завантажуємо ліміти…</p>
   }
 
-  const months = [...new Set([...getBudgetMonths(limits, currentMonth), ...data.months.keys()])]
+  const nextMonth = shiftBudgetMonth(currentMonth, 1)
+  const months = [...new Set([nextMonth, ...getBudgetMonths(limits, currentMonth), ...data.months.keys()])]
     .sort((first, second) => second.localeCompare(first))
   const requestedMonth = params.get('month')
   const month = requestedMonth && months.includes(requestedMonth) ? requestedMonth : currentMonth
-  const needsConfirmation = month === currentMonth && !hasConfirmedBudgetMonth(limits, month)
+  const editableMonth = month === currentMonth || month === nextMonth
+  const needsConfirmation = editableMonth && !hasConfirmedBudgetMonth(limits, month)
   const budgets = getCategoryBudgets(limits, month)
   const categories = new Map(data.categories.map((category) => [category.id, category]))
   const expenses = data.months.get(month)?.expensesByCategory
@@ -73,13 +75,13 @@ export default function CategoryBudgetsPage({ client, snapshot, transactionOverl
         </select>
       </label>
       {needsConfirmation && (snapshot ? (
-        <p className="text-sm text-zinc-400">Підключися до інтернету, щоб підтвердити ліміти на цей місяць.</p>
+        <p className="text-sm text-zinc-400">Підключися до інтернету, щоб підтвердити ліміти на вибраний місяць.</p>
       ) : (
-        <MonthlyBudgetReview key={month} categories={data.categories} previous={getCategoryBudgets(limits, previousBudgetMonth(month))}
+        <MonthlyBudgetReview key={month} month={month} categories={data.categories} previous={getCategoryBudgets(limits, shiftBudgetMonth(month, -1))}
           onConfirm={confirmBudget} />
       ))}
-      {!snapshot && month === currentMonth && !needsConfirmation && (
-        <CategoryBudgetEditor key={month} categories={data.categories} budgets={budgets} onSave={saveBudget} />
+      {!snapshot && editableMonth && !needsConfirmation && (
+        <CategoryBudgetEditor key={month} month={month} categories={data.categories} budgets={budgets} onSave={saveBudget} />
       )}
       {rows.length ? (
         <ul aria-label="Ліміти за категоріями" className="grid gap-3">

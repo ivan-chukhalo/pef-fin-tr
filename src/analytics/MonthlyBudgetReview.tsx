@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { Category } from '../categories/data'
+import { formatMonth } from '../lib/dates'
 import { formatBalanceInput, parseHryvnias } from '../lib/money'
 import { getBudgetCategories, type CategoryBudgetDraft } from './budgets'
 
-export default function MonthlyBudgetReview({ categories, previous, onConfirm }: {
+export default function MonthlyBudgetReview({ month, categories, previous, onConfirm }: {
+  month: string
   categories: readonly Category[]
   previous: ReadonlyMap<string, bigint>
   onConfirm: (draft: readonly CategoryBudgetDraft[]) => Promise<void>
@@ -46,11 +48,11 @@ export default function MonthlyBudgetReview({ categories, previous, onConfirm }:
 
   return (
     <section aria-labelledby="budget-review" className="space-y-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
-      <h2 id="budget-review" className="font-semibold">Підтвердити ліміти на місяць</h2>
+      <h2 id="budget-review" className="font-semibold">Підтвердити ліміти на {formatMonth(month)}</h2>
       {options.length ? (
         <form className="space-y-3" onSubmit={(event) => void confirm(event)}>
           <p className="text-sm text-zinc-400">
-            {previous.size ? 'Ми підставили ліміти минулого місяця. ' : ''}Вкажи суми в гривнях. Порожнє поле залишає категорію без ліміту.
+            {previous.size ? 'Ми підставили ліміти попереднього місяця. ' : ''}Вкажи суми в гривнях. Порожнє поле залишає категорію без ліміту.
           </p>
           <fieldset disabled={saving} className="grid min-w-0 gap-3 sm:grid-cols-2">
             {options.map(({ id, name, is_hidden }) => (

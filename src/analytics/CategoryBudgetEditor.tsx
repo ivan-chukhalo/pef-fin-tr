@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import type { Category } from '../categories/data'
+import { formatDate } from '../lib/dates'
 import { formatBalanceInput, parseHryvnias } from '../lib/money'
 import { getBudgetCategories } from './budgets'
 
 const fieldClass = 'mt-1 min-h-11 w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/30'
 const buttonClass = 'min-h-11 rounded-xl border border-zinc-700 px-4 text-sm font-medium hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-50'
 
-export default function CategoryBudgetEditor({ categories, budgets, onSave }: {
+export default function CategoryBudgetEditor({ month, categories, budgets, onSave }: {
+  month: string
   categories: readonly Category[]
   budgets: ReadonlyMap<string, bigint>
   onSave: (categoryId: string, amount: bigint | null) => Promise<void>
@@ -18,6 +20,7 @@ export default function CategoryBudgetEditor({ categories, budgets, onSave }: {
   const eligibleCategories = getBudgetCategories(categories, budgets)
   const category = eligibleCategories.find(({ id }) => id === categoryId)
   const activeLimit = category && budgets.get(category.id)
+  const start = formatDate(`${month}-01`)
 
   async function save(amount: bigint | null) {
     if (!category || saving) return
@@ -26,7 +29,7 @@ export default function CategoryBudgetEditor({ categories, budgets, onSave }: {
     try {
       await onSave(category.id, amount)
       setAmountInput(amount === null ? '' : formatBalanceInput(amount))
-      setNotice({ message: amount === null ? 'Ліміт вимкнено з цього місяця.' : 'Ліміт збережено.' })
+      setNotice({ message: amount === null ? `Ліміт вимкнено з ${start}.` : 'Ліміт збережено.' })
     } catch {
       setNotice({ message: 'Не вдалося зберегти ліміт. Спробуй ще раз.', error: true })
     } finally {
@@ -50,7 +53,7 @@ export default function CategoryBudgetEditor({ categories, budgets, onSave }: {
         Налаштувати ліміти
       </summary>
       <form onSubmit={submit} className="space-y-3 px-3 pb-3">
-        <p className="text-sm text-zinc-400">Ліміт діє з поточного місяця й повторюється, доки ти його не зміниш.</p>
+        <p className="text-sm text-zinc-400">Ліміт діє з {start} й повторюється, доки ти його не зміниш.</p>
         <fieldset disabled={saving} className="min-w-0 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="min-w-0 text-sm font-medium">

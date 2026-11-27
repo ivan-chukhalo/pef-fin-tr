@@ -20,9 +20,9 @@ export function hasConfirmedBudgetMonth(limits: readonly CategoryBudgetLimit[], 
   return limits.some(({ effective_month }) => effective_month === `${month}-01`)
 }
 
-export function previousBudgetMonth(month: string) {
+export function shiftBudgetMonth(month: string, offset: number) {
   const date = new Date(`${month}-01T00:00:00Z`)
-  date.setUTCMonth(date.getUTCMonth() - 1)
+  date.setUTCMonth(date.getUTCMonth() + offset)
   return date.toISOString().slice(0, 7)
 }
 
